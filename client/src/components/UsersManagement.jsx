@@ -39,7 +39,7 @@ function UsersManagement() {
     setLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch('${API_BASE_URL}/api/admin/users', {
+      const res = await fetch(`${API_BASE_URL}/api/admin/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -92,7 +92,7 @@ function UsersManagement() {
       return;
     }
     const token = localStorage.getItem('token');
-    const res = await fetch('${API_BASE_URL}/api/auth/register', {
+    const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

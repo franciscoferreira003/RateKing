@@ -30,7 +30,7 @@ function ReviewList({ category, allReviews }) {
 
       const url = urlCategory
         ? `${API_BASE_URL}/api/reviews/${urlCategory}`
-        : '${API_BASE_URL}/api/reviews';
+        : `${API_BASE_URL}/api/reviews`;
 
       fetch(url)
         .then(res => res.json())

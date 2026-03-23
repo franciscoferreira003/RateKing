@@ -18,7 +18,7 @@ function Movies() {
   const fetchMovies = async () => {
     setLoading(true);
     try {
-      const res = await fetch('${API_BASE_URL}/api/movies');
+      const res = await fetch(`${API_BASE_URL}/api/movies`);
       const data = await res.json();
       if (data.Response === 'True') {
         setMovies(data.Search || []);

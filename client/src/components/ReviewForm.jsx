@@ -24,7 +24,7 @@ function ReviewForm() {
   useEffect(() => {
     if (id) {
       const searchReview = async () => {
-        const res = await fetch('${API_BASE_URL}/api/reviews');
+        const res = await fetch(`${API_BASE_URL}/api/reviews`);
         const data = await res.json();
         for (const [cat, items] of Object.entries(data)) {
           const review = items.find(r => r.id === parseInt(id));
@@ -51,7 +51,7 @@ function ReviewForm() {
 
   const fetchMovies = async () => {
     try {
-      const res = await fetch('${API_BASE_URL}/api/movies');
+      const res = await fetch(`${API_BASE_URL}/api/movies`);
       const data = await res.json();
       if (data.Response === 'True') {
         setMovies(data.Search || []);

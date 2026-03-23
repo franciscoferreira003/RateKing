@@ -68,7 +68,7 @@ function Admin() {
     setLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const usersRes = await fetch('${API_BASE_URL}/api/admin/users', {
+      const usersRes = await fetch(`${API_BASE_URL}/api/admin/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const usersData = await usersRes.json();
