@@ -80,15 +80,21 @@ function Header() {
 
           {user ? (
             <>
-              <Link to={`/profile/${user.id}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                {user.profilePicture ? (
-                  <img src={user.profilePicture} alt={user.username} className="w-7 h-7 rounded-full object-cover border border-yellow-500/50" />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white">
-                    {user.username.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span className="text-xs text-white/70 hidden sm:inline">{user.username}</span>
+              <Link to={`/profile/${user.id}`} className="group relative">
+                <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-yellow-500/50 group-hover:border-yellow-400 transition-all shadow-lg group-hover:shadow-yellow-500/20">
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt={user.username} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white/60" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                  {user.username}
+                </span>
               </Link>
               <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3">
                 Logout

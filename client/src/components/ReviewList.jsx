@@ -160,19 +160,23 @@ function ReviewList({ category, allReviews }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-white/50 text-sm">by</span>
-                  <Link to={`/profile/${review.userId}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                    {userData[review.userId]?.profilePicture ? (
-                      <img
-                        src={userData[review.userId].profilePicture}
-                        alt={userData[review.userId]?.username || 'Anonymous'}
-                        className="w-5 h-5 rounded-full object-cover border border-yellow-500/30"
-                      />
-                    ) : (
-                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-white">
-                        {(userData[review.userId]?.username || 'A').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="text-white font-medium">{userData[review.userId]?.username || 'Anonymous'}</span>
+                  <Link to={`/profile/${review.userId}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity group">
+                    <div className="w-6 h-6 rounded-full overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400/50 transition-colors">
+                      {userData[review.userId]?.profilePicture ? (
+                        <img
+                          src={userData[review.userId].profilePicture}
+                          alt={userData[review.userId]?.username || 'Anonymous'}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
+                          <svg className="w-3.5 h-3.5 text-white/50" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">{userData[review.userId]?.username || 'Anonymous'}</span>
                   </Link>
                 </div>
               </div>
