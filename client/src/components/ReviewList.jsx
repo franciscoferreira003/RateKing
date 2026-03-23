@@ -17,7 +17,7 @@ function ReviewList({ category, allReviews }) {
   const { user, loading } = useAuth();
   const [reviews, setReviews] = useState([]);
   const [cat, setCat] = useState(urlCategory || category);
-  const [usernames, setUsernames] = useState({});
+  const [userData, setUserData] = useState({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -37,14 +37,14 @@ function ReviewList({ category, allReviews }) {
         .then(data => {
           if (urlCategory) {
             setReviews(data);
-            fetchUsernames(data);
+            fetchUserData(data);
           } else {
             const all = [];
             for (const [catKey, items] of Object.entries(data)) {
               all.push(...items.map(item => ({ ...item, category: catKey })));
             }
             setReviews(all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-            fetchUsernames(all);
+            fetchUserData(all);
           }
         });
     }
@@ -63,21 +63,24 @@ function ReviewList({ category, allReviews }) {
 
   if (!user) return null;
 
-  const fetchUsernames = async (reviewsList) => {
+  const fetchUserData = async (reviewsList) => {
     const userIds = [...new Set(reviewsList.map(r => r.userId).filter(Boolean))];
-    const usernamesMap = {};
+    const userDataMap = {};
     for (const userId of userIds) {
       try {
         const res = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         const data = await res.json();
         if (data.username) {
-          usernamesMap[userId] = data.username;
+          userDataMap[userId] = {
+            username: data.username,
+            profilePicture: data.profilePicture
+          };
         }
       } catch (e) {
-        usernamesMap[userId] = 'Anonymous';
+        userDataMap[userId] = { username: 'Anonymous', profilePicture: null };
       }
     }
-    setUsernames(usernamesMap);
+    setUserData(userDataMap);
   };
 
   const deleteReview = async (id, cat) => {
@@ -157,7 +160,20 @@ function ReviewList({ category, allReviews }) {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-white/50 text-sm">by</span>
-                  <span className="text-white font-medium">{usernames[review.userId] || 'Anonymous'}</span>
+                  <Link to={`/profile/${review.userId}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    {userData[review.userId]?.profilePicture ? (
+                      <img
+                        src={userData[review.userId].profilePicture}
+                        alt={userData[review.userId]?.username || 'Anonymous'}
+                        className="w-5 h-5 rounded-full object-cover border border-yellow-500/30"
+                      />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-white">
+                        {(userData[review.userId]?.username || 'A').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="text-white font-medium">{userData[review.userId]?.username || 'Anonymous'}</span>
+                  </Link>
                 </div>
               </div>
 

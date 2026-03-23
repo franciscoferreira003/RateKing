@@ -82,10 +82,18 @@ async function initializeDatabase() {
           username VARCHAR(255) NOT NULL UNIQUE,
           email VARCHAR(255) NOT NULL UNIQUE,
           password VARCHAR(255) NOT NULL,
+          profile_picture TEXT,
           is_admin BOOLEAN DEFAULT false,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `);
+
+      // Add profile_picture column if it doesn't exist
+      try {
+        await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_picture TEXT`);
+      } catch (e) {
+        // Column might already exist
+      }
 
       await client.query(`
         CREATE TABLE IF NOT EXISTS reviews (

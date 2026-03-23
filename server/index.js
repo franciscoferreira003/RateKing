@@ -246,19 +246,19 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
   console.log('=== GET ME REQUEST ===');
   try {
     if (USE_DATABASE) {
-      const result = await pool.query('SELECT id, username, email, is_admin FROM users WHERE id = $1', [req.userId]);
+      const result = await pool.query('SELECT id, username, email, profile_picture, is_admin FROM users WHERE id = $1', [req.userId]);
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
       const user = result.rows[0];
-      res.json({ id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin });
+      res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profile_picture, isAdmin: user.is_admin });
     } else {
       const users = readJsonFile(USERS_FILE) || [];
       const user = users.find(u => u.id === req.userId);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json({ id: user.id, username: user.username, email: user.email, isAdmin: user.isAdmin });
+      res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture || null, isAdmin: user.isAdmin });
     }
   } catch (err) {
     console.error('Get me - Error:', err);
@@ -271,21 +271,134 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
 app.get('/api/users/:id', async (req, res) => {
   try {
     if (USE_DATABASE) {
-      const result = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.params.id]);
+      const result = await pool.query('SELECT id, username, profile_picture, created_at FROM users WHERE id = $1', [req.params.id]);
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json(result.rows[0]);
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        profilePicture: user.profile_picture,
+        createdAt: user.created_at
+      });
     } else {
       const users = readJsonFile(USERS_FILE) || [];
       const user = users.find(u => u.id === req.params.id);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
-      res.json({ id: user.id, username: user.username });
+      res.json({
+        id: user.id,
+        username: user.username,
+        profilePicture: user.profilePicture || null,
+        createdAt: user.createdAt
+      });
     }
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Get user profile with reviews
+app.get('/api/users/:id/profile', async (req, res) => {
+  console.log('=== GET USER PROFILE ===', req.params.id);
+  try {
+    if (USE_DATABASE) {
+      const userResult = await pool.query('SELECT id, username, profile_picture, created_at FROM users WHERE id = $1', [req.params.id]);
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const user = userResult.rows[0];
+
+      const reviewsResult = await pool.query(
+        'SELECT * FROM reviews WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.params.id]
+      );
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          profilePicture: user.profile_picture,
+          createdAt: user.created_at
+        },
+        reviews: reviewsResult.rows.map(transformReview)
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.id === req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const allReviews = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      const userReviews = [];
+      for (const [category, reviews] of Object.entries(allReviews)) {
+        for (const review of reviews) {
+          if (review.userId === req.params.id) {
+            userReviews.push({ ...review, category });
+          }
+        }
+      }
+      userReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          profilePicture: user.profilePicture || null,
+          createdAt: user.createdAt
+        },
+        reviews: userReviews
+      });
+    }
+  } catch (err) {
+    console.error('Get user profile - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Update current user's profile
+app.put('/api/users/me', authMiddleware, async (req, res) => {
+  console.log('=== UPDATE USER PROFILE ===');
+  const { profilePicture } = req.body;
+
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'UPDATE users SET profile_picture = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [profilePicture, req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      users[userIndex].profilePicture = profilePicture;
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Update profile - Error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 

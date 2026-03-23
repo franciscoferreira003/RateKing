@@ -10,6 +10,7 @@ import Admin from './components/Admin';
 import UsersManagement from './components/UsersManagement';
 import Media from './components/Media';
 import MovieForm from './components/MovieForm';
+import Profile from './components/Profile';
 import API_BASE_URL from './config';
 import './App.css';
 
@@ -79,7 +80,16 @@ function Header() {
 
           {user ? (
             <>
-              <span className="text-xs text-white/70 hidden sm:inline">👤 {user.username}</span>
+              <Link to={`/profile/${user.id}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                {user.profilePicture ? (
+                  <img src={user.profilePicture} alt={user.username} className="w-7 h-7 rounded-full object-cover border border-yellow-500/50" />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white">
+                    {user.username.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="text-xs text-white/70 hidden sm:inline">{user.username}</span>
+              </Link>
               <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3">
                 Logout
               </button>
@@ -114,6 +124,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/media" element={<Media />} />
+            <Route path="/profile/:id" element={<Profile />} />
             <Route path="/movies/new" element={<MovieForm />} />
             <Route path="/category/:category" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/category/:category/new" element={user ? <ReviewForm /> : <Login />} />
