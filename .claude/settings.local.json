@@ -11,7 +11,15 @@
       "Bash(npm install:*)",
       "Bash(npx tailwindcss:*)",
       "Bash(ls -la client/src/components/*.css)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(gh --version)",
+      "Bash(winget install:*)",
+      "Bash(gh auth:*)",
+      "Bash(gh repo:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
