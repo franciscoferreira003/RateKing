@@ -398,14 +398,16 @@ app.get('/api/movies', (req, res) => {
   res.json({ Response: 'True', Search: movies });
 });
 
-// Serve static frontend in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../dist')));
+// Serve static frontend if dist folder exists (production build)
+const distPath = path.join(__dirname, '../dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
   app.get('/*path', (req, res) => {
-    res.sendFile(path.join(__dirname, '../dist/index.html'));
+    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 });

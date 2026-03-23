@@ -32,33 +32,43 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      localStorage.setItem('token', data.token);
-      setUser(data.user);
-      return { ok: true };
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', data.token);
+        setUser(data.user);
+        return { ok: true };
+      }
+      return { ok: false, error: data.error || 'Login failed' };
+    } catch (err) {
+      console.error('Login error:', err);
+      return { ok: false, error: 'Network error. Please check your connection.' };
     }
-    return { ok: false, error: data.error };
   };
 
   const register = async (username, email, password) => {
-    const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      localStorage.setItem('token', data.token);
-      setUser(data.user);
-      return { ok: true };
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('token', data.token);
+        setUser(data.user);
+        return { ok: true };
+      }
+      return { ok: false, error: data.error || 'Registration failed' };
+    } catch (err) {
+      console.error('Register error:', err);
+      return { ok: false, error: 'Network error. Please check your connection.' };
     }
-    return { ok: false, error: data.error };
   };
 
   const logout = () => {
@@ -69,12 +79,16 @@ export function AuthProvider({ children }) {
   const updateUser = async () => {
     const token = localStorage.getItem('token');
     if (token) {
-      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.id) {
-        setUser(data);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.id) {
+          setUser(data);
+        }
+      } catch (err) {
+        console.error('Update user error:', err);
       }
     }
   };
