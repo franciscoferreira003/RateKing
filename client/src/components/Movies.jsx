@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 import './Movies.css';
 
 function Movies() {
@@ -17,7 +18,7 @@ function Movies() {
   const fetchMovies = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/movies');
+      const res = await fetch('${API_BASE_URL}/api/movies');
       const data = await res.json();
       if (data.Response === 'True') {
         setMovies(data.Search || []);
@@ -35,7 +36,7 @@ function Movies() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:3001/api/movies/search?query=${encodeURIComponent(searchQuery)}`);
+      const res = await fetch(`${API_BASE_URL}/api/movies/search?query=${encodeURIComponent(searchQuery)}`);
       const data = await res.json();
       if (data.Response === 'True') {
         setMovies(data.Search || []);

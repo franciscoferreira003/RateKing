@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 import './ReviewForm.css';
 
 const categories = ['movies', 'songs', 'videogames', 'shows'];
@@ -23,7 +24,7 @@ function ReviewForm() {
   useEffect(() => {
     if (id) {
       const searchReview = async () => {
-        const res = await fetch('http://localhost:3001/api/reviews');
+        const res = await fetch('${API_BASE_URL}/api/reviews');
         const data = await res.json();
         for (const [cat, items] of Object.entries(data)) {
           const review = items.find(r => r.id === parseInt(id));
@@ -50,7 +51,7 @@ function ReviewForm() {
 
   const fetchMovies = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/movies');
+      const res = await fetch('${API_BASE_URL}/api/movies');
       const data = await res.json();
       if (data.Response === 'True') {
         setMovies(data.Search || []);
@@ -89,8 +90,8 @@ function ReviewForm() {
     }
 
     const url = id
-      ? `http://localhost:3001/api/reviews/${formData.category}/${id}`
-      : `http://localhost:3001/api/reviews/${formData.category}`;
+      ? `${API_BASE_URL}/api/reviews/${formData.category}/${id}`
+      : `${API_BASE_URL}/api/reviews/${formData.category}`;
 
     const method = id ? 'PUT' : 'POST';
 

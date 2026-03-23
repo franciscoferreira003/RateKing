@@ -9,6 +9,7 @@ import Register from './components/Register';
 import Admin from './components/Admin';
 import UsersManagement from './components/UsersManagement';
 import Movies from './components/Movies';
+import API_BASE_URL from './config';
 import './App.css';
 
 const categories = ['movies', 'songs', 'videogames', 'shows'];
@@ -18,7 +19,7 @@ function Header() {
   const [allReviews, setAllReviews] = useState({});
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/reviews')
+    fetch(`${API_BASE_URL}/api/reviews`)
       .then(res => res.json())
       .then(data => setAllReviews(data));
   }, []);
@@ -102,7 +103,7 @@ function AppContent() {
   const [allReviews, setAllReviews] = useState({});
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/reviews')
+    fetch(`${API_BASE_URL}/api/reviews`)
       .then(res => res.json())
       .then(data => setAllReviews(data));
   }, []);

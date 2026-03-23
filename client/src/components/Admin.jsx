@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config';
 import './Admin.css';
 
 function Admin() {
@@ -51,7 +52,7 @@ function Admin() {
     const usernamesMap = {};
     for (const userId of userIds) {
       try {
-        const res = await fetch(`http://localhost:3001/api/users/${userId}`);
+        const res = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         const data = await res.json();
         if (data.username) {
           usernamesMap[userId] = data.username;
@@ -67,7 +68,7 @@ function Admin() {
     setLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const usersRes = await fetch('http://localhost:3001/api/admin/users', {
+      const usersRes = await fetch('${API_BASE_URL}/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const usersData = await usersRes.json();
@@ -75,7 +76,7 @@ function Admin() {
         setUsers(usersData);
       }
 
-      const reviewsRes = await fetch('http://localhost:3001/api/admin/reviews', {
+      const reviewsRes = await fetch(`${API_BASE_URL}/api/admin/reviews`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const reviewsData = await reviewsRes.json();
@@ -92,7 +93,7 @@ function Admin() {
   const deleteUser = async (userId) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${userId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -107,7 +108,7 @@ function Admin() {
   const deleteReview = async (category, reviewId) => {
     if (!confirm('Are you sure you want to delete this review?')) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/reviews/${category}/${reviewId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/reviews/${category}/${reviewId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -121,7 +122,7 @@ function Admin() {
 
   const toggleAdmin = async (userId, currentStatus) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${userId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -144,7 +145,7 @@ function Admin() {
       return;
     }
     const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:3001/api/auth/register', {
+    const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,7 +178,7 @@ function Admin() {
       return;
     }
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${selectedUserId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${selectedUserId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

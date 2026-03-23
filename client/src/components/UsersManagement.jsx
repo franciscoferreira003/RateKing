@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config';
 import './UsersManagement.css';
 
 function UsersManagement() {
@@ -38,7 +39,7 @@ function UsersManagement() {
     setLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const res = await fetch('http://localhost:3001/api/admin/users', {
+      const res = await fetch('${API_BASE_URL}/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -54,7 +55,7 @@ function UsersManagement() {
   const deleteUser = async (userId) => {
     if (!confirm('Are you sure you want to delete this user?')) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${userId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -68,7 +69,7 @@ function UsersManagement() {
 
   const toggleAdmin = async (userId, currentStatus) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${userId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${userId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -91,7 +92,7 @@ function UsersManagement() {
       return;
     }
     const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:3001/api/auth/register', {
+    const res = await fetch('${API_BASE_URL}/api/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -125,7 +126,7 @@ function UsersManagement() {
       return;
     }
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:3001/api/admin/users/${selectedUserId}`, {
+    const res = await fetch(`${API_BASE_URL}/api/admin/users/${selectedUserId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',

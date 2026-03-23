@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 import './ReviewList.css';
 
 const categoryIcons = {
@@ -28,8 +29,8 @@ function ReviewList({ category, allReviews }) {
       setCat(urlCategory || category);
 
       const url = urlCategory
-        ? `http://localhost:3001/api/reviews/${urlCategory}`
-        : 'http://localhost:3001/api/reviews';
+        ? `${API_BASE_URL}/api/reviews/${urlCategory}`
+        : '${API_BASE_URL}/api/reviews';
 
       fetch(url)
         .then(res => res.json())
@@ -67,7 +68,7 @@ function ReviewList({ category, allReviews }) {
     const usernamesMap = {};
     for (const userId of userIds) {
       try {
-        const res = await fetch(`http://localhost:3001/api/users/${userId}`);
+        const res = await fetch(`${API_BASE_URL}/api/users/${userId}`);
         const data = await res.json();
         if (data.username) {
           usernamesMap[userId] = data.username;
@@ -87,7 +88,7 @@ function ReviewList({ category, allReviews }) {
     }
     if (confirm('Are you sure you want to delete this review?')) {
       try {
-        const res = await fetch(`http://localhost:3001/api/reviews/${cat}/${id}`, {
+        const res = await fetch(`${API_BASE_URL}/api/reviews/${cat}/${id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` }
         });

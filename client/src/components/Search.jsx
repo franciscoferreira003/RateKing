@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 import './Search.css';
 
 const categories = ['movies', 'songs', 'videogames', 'shows'];
@@ -37,8 +38,8 @@ function Search() {
     if (!query.trim()) return;
 
     const url = filter
-      ? `http://localhost:3001/api/search?q=${encodeURIComponent(query)}&category=${filter}`
-      : `http://localhost:3001/api/search?q=${encodeURIComponent(query)}`;
+      ? `${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}&category=${filter}`
+      : `${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}`;
 
     const res = await fetch(url);
     const data = await res.json();
