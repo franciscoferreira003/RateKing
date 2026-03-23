@@ -725,38 +725,29 @@ app.get('/api/movies', async (req, res) => {
   console.log('=== GET ALL MOVIES ===');
 
   try {
-    // First check local database/files
-    if (USE_DATABASE) {
-      const result = await pool.query('SELECT * FROM movies LIMIT 50');
-      console.log('Movies found:', result.rows.length);
-      res.json({ Response: 'True', Search: result.rows });
-    } else {
-      const movies = readJsonFile(MOVIES_FILE) || [];
-      console.log('Movies found:', movies.length);
+    // Always fetch popular movies from OMDB API
+    const popularSearches = ['star wars', 'marvel', 'harry potter', 'lord of the rings', 'inception'];
+    const allMovies = [];
 
-      // If no local movies, search for popular ones
-      if (movies.length === 0) {
-        const popularSearches = ['star wars', 'marvel', 'harry potter', 'lord of the rings', 'matrix'];
-        const allMovies = [];
-
-        for (const search of popularSearches) {
-          const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=movie`);
-          const data = await response.json();
-          if (data.Response === 'True' && data.Search) {
-            allMovies.push(...data.Search.slice(0, 3));
-          }
+    for (const search of popularSearches) {
+      try {
+        const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=movie`);
+        const data = await response.json();
+        if (data.Response === 'True' && data.Search) {
+          allMovies.push(...data.Search.slice(0, 2));
         }
-
-        // Remove duplicates
-        const uniqueMovies = allMovies.filter((movie, index, self) =>
-          index === self.findIndex(m => m.imdbID === movie.imdbID)
-        );
-
-        res.json({ Response: 'True', Search: uniqueMovies });
-      } else {
-        res.json({ Response: 'True', Search: movies });
+      } catch (e) {
+        console.error(`Error fetching ${search}:`, e.message);
       }
     }
+
+    // Remove duplicates
+    const uniqueMovies = allMovies.filter((movie, index, self) =>
+      index === self.findIndex(m => m.imdbID === movie.imdbID)
+    );
+
+    console.log('Movies found from OMDB:', uniqueMovies.length);
+    res.json({ Response: 'True', Search: uniqueMovies });
   } catch (err) {
     console.error('Get movies - Error:', err);
     res.status(500).json({ error: 'Failed to fetch movies' });
