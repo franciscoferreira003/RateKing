@@ -14,26 +14,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 const OMDB_API_KEY = 'e1f7378f'; // OMDB API Key
 const OMDB_URL = 'http://www.omdbapi.com/';
 
-// Configure multer for file uploads
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname);
-    cb(null, 'profile-' + uniqueSuffix + ext);
-  }
-});
-
+// Configure multer for in-memory file uploads (we'll store as base64 in DB)
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit (base64 will be ~33% larger)
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -54,9 +38,6 @@ console.log('USE_DATABASE:', USE_DATABASE);
 
 app.use(cors());
 app.use(bodyParser.json());
-
-// Serve uploaded files statically
-app.use('/uploads', express.static(uploadsDir));
 
 // Log all requests
 app.use((req, res, next) => {
@@ -438,7 +419,7 @@ app.put('/api/users/me', authMiddleware, async (req, res) => {
   }
 });
 
-// Upload profile picture
+// Upload profile picture (stores as base64 in database)
 app.post('/api/users/me/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
   console.log('=== UPLOAD AVATAR ===');
 
@@ -446,7 +427,10 @@ app.post('/api/users/me/avatar', authMiddleware, upload.single('avatar'), async 
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  const profilePicture = `/uploads/${req.file.filename}`;
+  // Convert image to base64 data URL
+  const mimeType = req.file.mimetype;
+  const base64 = req.file.buffer.toString('base64');
+  const profilePicture = `data:${mimeType};base64,${base64}`;
 
   try {
     if (USE_DATABASE) {

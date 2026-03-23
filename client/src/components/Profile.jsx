@@ -137,7 +137,7 @@ function Profile() {
           <div className="relative">
             {profile.user.profilePicture ? (
               <img
-                src={profile.user.profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${profile.user.profilePicture}` : profile.user.profilePicture}
+                src={profile.user.profilePicture}
                 alt={profile.user.username}
                 className="w-32 h-32 rounded-full object-cover border-4 border-yellow-500/50 shadow-xl"
               />

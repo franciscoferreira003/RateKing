@@ -87,7 +87,7 @@ function Header() {
                 <div style={{ width: '24px', height: '24px', minWidth: '24px', minHeight: '24px' }} className="rounded-full overflow-hidden border border-yellow-500/50 flex-shrink-0">
                   {user.profilePicture ? (
                     <img
-                      src={user.profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${user.profilePicture}` : user.profilePicture}
+                      src={user.profilePicture}
                       alt={user.username}
                       style={{ width: '24px', height: '24px', objectFit: 'cover' }}
                     />

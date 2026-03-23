@@ -164,7 +164,7 @@ function ReviewList({ category, allReviews }) {
                     <div style={{ width: '24px', height: '24px', minWidth: '24px', minHeight: '24px' }} className="rounded-full overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400/50 transition-colors flex-shrink-0">
                       {userData[review.userId]?.profilePicture ? (
                         <img
-                          src={userData[review.userId].profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${userData[review.userId].profilePicture}` : userData[review.userId].profilePicture}
+                          src={userData[review.userId].profilePicture}
                           alt={userData[review.userId]?.username || 'Anonymous'}
                           style={{ width: '24px', height: '24px', objectFit: 'cover' }}
                         />
