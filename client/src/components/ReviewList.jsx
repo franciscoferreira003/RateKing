@@ -164,7 +164,7 @@ function ReviewList({ category, allReviews }) {
                     <div className="w-6 h-6 rounded-full overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400/50 transition-colors">
                       {userData[review.userId]?.profilePicture ? (
                         <img
-                          src={userData[review.userId].profilePicture}
+                          src={userData[review.userId].profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${userData[review.userId].profilePicture}` : userData[review.userId].profilePicture}
                           alt={userData[review.userId]?.username || 'Anonymous'}
                           className="w-full h-full object-cover"
                         />

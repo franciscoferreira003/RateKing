@@ -86,7 +86,11 @@ function Header() {
               >
                 <div className="w-6 h-6 rounded-full overflow-hidden border border-yellow-500/50">
                   {user.profilePicture ? (
-                    <img src={user.profilePicture} alt={user.username} className="w-full h-full object-cover" />
+                    <img
+                      src={user.profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${user.profilePicture}` : user.profilePicture}
+                      alt={user.username}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
                       <svg className="w-3.5 h-3.5 text-white/60" fill="currentColor" viewBox="0 0 24 24">

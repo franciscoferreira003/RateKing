@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import API_BASE_URL from '../config';
@@ -8,11 +8,12 @@ function Profile() {
   const { id } = useParams();
   const { user: currentUser, updateUser } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
-  const [profilePicture, setProfilePicture] = useState('');
 
   useEffect(() => {
     fetchProfile();
@@ -25,9 +26,6 @@ function Profile() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
-        if (currentUser && currentUser.id === id) {
-          setProfilePicture(data.user.profilePicture || '');
-        }
       } else {
         setError('User not found');
       }
@@ -37,16 +35,37 @@ function Profile() {
     setLoading(false);
   };
 
-  const handleSaveProfile = async () => {
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Only image files are allowed (JPEG, PNG, GIF, WebP)');
+      return;
+    }
+
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/api/users/me`, {
-        method: 'PUT',
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      const res = await fetch(`${API_BASE_URL}/api/users/me/avatar`, {
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ profilePicture })
+        body: formData
       });
 
       if (res.ok) {
@@ -61,11 +80,13 @@ function Profile() {
           await updateUser();
         }
       } else {
-        setError('Failed to update profile');
+        const data = await res.json();
+        setError(data.error || 'Failed to upload image');
       }
     } catch (e) {
-      setError('Failed to update profile');
+      setError('Failed to upload image');
     }
+    setUploading(false);
   };
 
   const getCategoryEmoji = (category) => {
@@ -116,7 +137,7 @@ function Profile() {
           <div className="relative">
             {profile.user.profilePicture ? (
               <img
-                src={profile.user.profilePicture}
+                src={profile.user.profilePicture.startsWith('/uploads') ? `${API_BASE_URL}${profile.user.profilePicture}` : profile.user.profilePicture}
                 alt={profile.user.username}
                 className="w-32 h-32 rounded-full object-cover border-4 border-yellow-500/50 shadow-xl"
               />
@@ -156,38 +177,40 @@ function Profile() {
         {/* Edit Form */}
         {editing && isOwnProfile && (
           <div className="mt-6 p-4 bg-white/5 rounded-xl">
-            <h3 className="text-white font-semibold mb-4">Edit Profile Picture</h3>
+            <h3 className="text-white font-semibold mb-4">Change Profile Picture</h3>
             <div className="flex flex-col gap-4">
-              <div>
-                <label className="block text-sm text-white/70 mb-2">
-                  Image URL (recommended: square image, at least 200x200px)
-                </label>
-                <input
-                  type="text"
-                  value={profilePicture}
-                  onChange={(e) => setProfilePicture(e.target.value)}
-                  placeholder="https://example.com/your-image.jpg"
-                  className="input w-full"
-                />
-              </div>
-              {profilePicture && (
-                <div className="flex justify-center">
-                  <img
-                    src={profilePicture}
-                    alt="Preview"
-                    className="w-24 h-24 rounded-full object-cover border-2 border-yellow-500/50"
-                    onError={(e) => e.target.style.display = 'none'}
-                  />
-                </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="btn btn-primary flex items-center justify-center gap-2"
+              >
+                {uploading ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    📷 Choose Image
+                  </>
+                )}
+              </button>
+              <p className="text-white/50 text-xs text-center">
+                Max 5MB. Supported formats: JPEG, PNG, GIF, WebP
+              </p>
+              {error && (
+                <p className="text-red-400 text-sm text-center">{error}</p>
               )}
-              <div className="flex gap-3">
-                <button onClick={handleSaveProfile} className="btn btn-primary">
-                  Save
-                </button>
-                <button onClick={() => { setEditing(false); setProfilePicture(profile.user.profilePicture || ''); }} className="btn btn-secondary">
-                  Cancel
-                </button>
-              </div>
+              <button onClick={() => setEditing(false)} className="btn btn-secondary">
+                Cancel
+              </button>
             </div>
           </div>
         )}

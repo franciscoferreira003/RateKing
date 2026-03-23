@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
 const { pool, initializeDatabase, generateId, USE_DATABASE, USERS_FILE, REVIEWS_FILE, MOVIES_FILE } = require('./db');
 
 const app = express();
@@ -12,6 +13,38 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const OMDB_API_KEY = 'e1f7378f'; // OMDB API Key
 const OMDB_URL = 'http://www.omdbapi.com/';
+
+// Configure multer for file uploads
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'profile-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 console.log('=== SERVER STARTING ===');
 console.log('PORT:', PORT);
@@ -21,6 +54,9 @@ console.log('USE_DATABASE:', USE_DATABASE);
 
 app.use(cors());
 app.use(bodyParser.json());
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(uploadsDir));
 
 // Log all requests
 app.use((req, res, next) => {
@@ -399,6 +435,54 @@ app.put('/api/users/me', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Update profile - Error:', err);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Upload profile picture
+app.post('/api/users/me/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
+  console.log('=== UPLOAD AVATAR ===');
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  const profilePicture = `/uploads/${req.file.filename}`;
+
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'UPDATE users SET profile_picture = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [profilePicture, req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      users[userIndex].profilePicture = profilePicture;
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Upload avatar - Error:', err);
+    res.status(500).json({ error: 'Failed to upload avatar' });
   }
 });
 

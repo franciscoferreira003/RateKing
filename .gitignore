@@ -23,3 +23,6 @@ npm-debug.log*
 # Local data files (keep structure but ignore data)
 server/users.json
 server/reviews.json
+# Ignore uploaded files but keep folder
+server/uploads/*
+!server/uploads/.gitkeep
