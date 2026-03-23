@@ -368,6 +368,48 @@ app.get('/api/movies', async (req, res) => {
   }
 });
 
+// Admin - Add movie
+app.post('/api/admin/movies', adminMiddleware, async (req, res) => {
+  console.log('=== ADD MOVIE ===');
+  console.log('Body:', req.body);
+
+  try {
+    const { imdbID, Title, Year, Poster, Plot, Director, Actors, Genre, imdbRating } = req.body;
+
+    if (!imdbID || !Title) {
+      return res.status(400).json({ error: 'IMDB ID and Title are required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO movies (imdb_id, title, year, poster, plot, director, actors, genre, imdb_rating) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (imdb_id) DO UPDATE SET title = $2, year = $3, poster = $4, plot = $5, director = $6, actors = $7, genre = $8, imdb_rating = $9 RETURNING *',
+      [imdbID, Title, Year || '', Poster || '', Plot || '', Director || '', Actors || '', Genre || '', imdbRating || '']
+    );
+
+    console.log('Movie added/updated:', result.rows[0].title);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Add movie - Error:', err);
+    res.status(500).json({ error: 'Failed to add movie' });
+  }
+});
+
+// Admin - Delete movie
+app.delete('/api/admin/movies/:id', adminMiddleware, async (req, res) => {
+  console.log('=== DELETE MOVIE ===', req.params.id);
+
+  try {
+    const result = await pool.query('DELETE FROM movies WHERE imdb_id = $1 RETURNING *', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Movie not found' });
+    }
+    console.log('Movie deleted:', result.rows[0].title);
+    res.json({ message: 'Movie deleted', movie: result.rows[0] });
+  } catch (err) {
+    console.error('Delete movie - Error:', err);
+    res.status(500).json({ error: 'Failed to delete movie' });
+  }
+});
+
 // Initialize database and start server
 async function startServer() {
   console.log('=== STARTING SERVER INITIALIZATION ===');

@@ -9,6 +9,7 @@ import Register from './components/Register';
 import Admin from './components/Admin';
 import UsersManagement from './components/UsersManagement';
 import Movies from './components/Movies';
+import MovieForm from './components/MovieForm';
 import API_BASE_URL from './config';
 import './App.css';
 
@@ -116,6 +117,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/movies" element={<Movies />} />
+            <Route path="/movies/new" element={<MovieForm />} />
             <Route path="/category/:category" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/category/:category/new" element={user ? <ReviewForm /> : <Login />} />
             <Route path="/review/:id/edit" element={user ? <ReviewForm /> : <Login />} />

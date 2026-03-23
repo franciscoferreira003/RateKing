@@ -60,6 +60,11 @@ function Movies() {
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gold-gradient">🎬 Browse Movies</h2>
         <p className="text-white/50 mt-2">Select a movie to review</p>
+        {user && user.isAdmin && (
+          <Link to="/movies/new" className="btn btn-primary mt-4 inline-flex">
+            ➕ Add Movie
+          </Link>
+        )}
       </div>
 
       {/* Search Bar */}

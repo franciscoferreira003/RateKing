@@ -1,0 +1,31 @@
+.movie-form-page {
+  min-height: 70vh;
+  padding: 2rem 1rem;
+}
+
+.movie-form-page .glass {
+  background: rgba(30, 30, 50, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.movie-form-page .input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  color: white;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.movie-form-page .input:focus {
+  outline: none;
+  border-color: rgba(255, 215, 0, 0.5);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.1);
+}
+
+.movie-form-page .input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
