@@ -20,7 +20,10 @@
       "Bash(git add:*)",
       "Bash(git restore:*)",
       "Bash(git commit:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(curl -s \"http://www.omdbapi.com/?s=star%20wars&apikey=e1f7378f&type=movie\")",
+      "Bash(curl -s \"http://localhost:3001/api/movies\")",
+      "Bash(node:*)"
     ]
   }
 }

@@ -689,6 +689,8 @@ app.get('/api/movies/search', async (req, res) => {
     const response = await fetch(searchUrl);
     const data = await response.json();
 
+    console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
+
     if (data.Response === 'True') {
       res.json({ Response: 'True', Search: data.Search || [] });
     } else {
@@ -728,26 +730,28 @@ app.get('/api/movies', async (req, res) => {
     // Always fetch popular movies from OMDB API
     const popularSearches = ['star wars', 'marvel', 'harry potter', 'lord of the rings', 'inception'];
     const allMovies = [];
+    const seenIds = new Set();
 
     for (const search of popularSearches) {
       try {
         const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=movie`);
         const data = await response.json();
         if (data.Response === 'True' && data.Search) {
-          allMovies.push(...data.Search.slice(0, 2));
+          for (const movie of data.Search) {
+            // Skip duplicates
+            if (!seenIds.has(movie.imdbID)) {
+              seenIds.add(movie.imdbID);
+              allMovies.push(movie);
+            }
+          }
         }
       } catch (e) {
         console.error(`Error fetching ${search}:`, e.message);
       }
     }
 
-    // Remove duplicates
-    const uniqueMovies = allMovies.filter((movie, index, self) =>
-      index === self.findIndex(m => m.imdbID === movie.imdbID)
-    );
-
-    console.log('Movies found from OMDB:', uniqueMovies.length);
-    res.json({ Response: 'True', Search: uniqueMovies });
+    console.log('Movies found from OMDB:', allMovies.length);
+    res.json({ Response: 'True', Search: allMovies });
   } catch (err) {
     console.error('Get movies - Error:', err);
     res.status(500).json({ error: 'Failed to fetch movies' });
