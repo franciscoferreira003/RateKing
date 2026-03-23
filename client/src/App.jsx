@@ -9,6 +9,7 @@ import Register from './components/Register';
 import Admin from './components/Admin';
 import UsersManagement from './components/UsersManagement';
 import Movies from './components/Movies';
+import Shows from './components/Shows';
 import MovieForm from './components/MovieForm';
 import API_BASE_URL from './config';
 import './App.css';
@@ -52,7 +53,7 @@ function Header() {
           <Link to="/category/videogames" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
             🎮 Games
           </Link>
-          <Link to="/category/shows" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
+          <Link to="/shows" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
             📺 Shows
           </Link>
         </nav>
@@ -118,6 +119,7 @@ function AppContent() {
             <Route path="/" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/movies" element={<Movies />} />
             <Route path="/movies/new" element={<MovieForm />} />
+            <Route path="/shows" element={<Shows />} />
             <Route path="/category/:category" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/category/:category/new" element={user ? <ReviewForm /> : <Login />} />
             <Route path="/review/:id/edit" element={user ? <ReviewForm /> : <Login />} />

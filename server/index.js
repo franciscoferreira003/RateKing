@@ -697,7 +697,7 @@ app.get('/api/movies/search', async (req, res) => {
 
   try {
     const searchUrl = query
-      ? `${OMDB_URL}?s=${encodeURIComponent(query)}&apikey=${OMDB_API_KEY}`
+      ? `${OMDB_URL}?s=${encodeURIComponent(query)}&apikey=${OMDB_API_KEY}&type=movie`
       : `${OMDB_URL}?s=movie&apikey=${OMDB_API_KEY}&type=movie`;
 
     const response = await fetch(searchUrl);
@@ -713,6 +713,30 @@ app.get('/api/movies/search', async (req, res) => {
   } catch (err) {
     console.error('Search movies - Error:', err);
     res.status(500).json({ error: 'Failed to search movies' });
+  }
+});
+
+// Search shows from OMDB API
+app.get('/api/shows/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH SHOWS (OMDB) ===', query);
+
+  try {
+    const searchUrl = `${OMDB_URL}?s=${encodeURIComponent(query || '')}&apikey=${OMDB_API_KEY}&type=series`;
+
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
+
+    if (data.Response === 'True') {
+      res.json({ Response: 'True', Search: data.Search || [] });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'No shows found', Search: [] });
+    }
+  } catch (err) {
+    console.error('Search shows - Error:', err);
+    res.status(500).json({ error: 'Failed to search shows' });
   }
 });
 
@@ -803,6 +827,26 @@ app.get('/api/shows', async (req, res) => {
   } catch (err) {
     console.error('Get shows - Error:', err);
     res.status(500).json({ error: 'Failed to fetch shows' });
+  }
+});
+
+// Get show details from OMDB API
+app.get('/api/shows/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET SHOW DETAILS ===', id);
+
+  try {
+    const response = await fetch(`${OMDB_URL}?i=${id}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+
+    if (data.Response === 'True') {
+      res.json({ Response: 'True', ...data });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'Show not found' });
+    }
+  } catch (err) {
+    console.error('Get show - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch show' });
   }
 });
 
