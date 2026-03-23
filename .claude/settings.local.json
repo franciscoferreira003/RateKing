@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //F //PID 19808 //PID 20112 //PID 2024 //PID 12452)",
+      "Bash(taskkill //F //IM node.exe)",
+      "Bash(tasklist)",
+      "Bash(wmic process:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(ls -la client/src/components/*.css)",
+      "Bash(npm uninstall:*)"
+    ]
+  }
+}

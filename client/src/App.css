@@ -1,0 +1,55 @@
+/* App.css - Custom styles complementing Tailwind */
+
+/* Crown animation */
+.crown-animate {
+  animation: crown-float 3s ease-in-out infinite;
+}
+
+@keyframes crown-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes crown-glow {
+  from { filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.3)); }
+  to { filter: drop-shadow(0 0 15px rgba(255, 215, 0, 0.7)); }
+}
+
+/* Gold text gradient helper */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #ffd700 0%, #ffaa00 50%, #b8860b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Crown glow effect */
+.crown-glow {
+  filter: drop-shadow(0 0 10px rgba(255, 215, 0, 0.5));
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 215, 0, 0.5);
+}
+
+/* Responsive nav for mobile */
+@media (max-width: 640px) {
+  nav {
+    display: none;
+  }
+}
