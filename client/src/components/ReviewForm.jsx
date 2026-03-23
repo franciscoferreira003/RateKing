@@ -20,6 +20,20 @@ function ReviewForm() {
   const [hoverRating, setHoverRating] = useState(0);
   const [error, setError] = useState('');
   const [movies, setMovies] = useState([]);
+  const [selectedMovieId, setSelectedMovieId] = useState('');
+
+  // Set initial form data from URL params
+  useEffect(() => {
+    const title = searchParams.get('title');
+    const description = searchParams.get('description');
+    if (title) {
+      setFormData(prev => ({
+        ...prev,
+        title: title,
+        description: description || ''
+      }));
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (id) {
@@ -46,6 +60,9 @@ function ReviewForm() {
   useEffect(() => {
     if (formData.category === 'movies') {
       fetchMovies();
+    } else {
+      setMovies([]);
+      setSelectedMovieId('');
     }
   }, [formData.category]);
 
@@ -54,23 +71,51 @@ function ReviewForm() {
       const res = await fetch(`${API_BASE_URL}/api/movies`);
       const data = await res.json();
       if (data.Response === 'True') {
-        setMovies(data.Search || []);
+        const movieList = data.Search || [];
+        setMovies(movieList);
+
+        // If we have a title from URL params, try to find matching movie
+        const title = searchParams.get('title');
+        if (title) {
+          const matchingMovie = movieList.find(m =>
+            m.Title.toLowerCase() === title.toLowerCase()
+          );
+          if (matchingMovie) {
+            setSelectedMovieId(matchingMovie.imdbID);
+          }
+        }
       }
     } catch (e) {
       console.error('Failed to fetch movies:', e);
     }
   };
 
-  const handleMovieSelect = (e) => {
+  const handleMovieSelect = async (e) => {
     const movieId = e.target.value;
+    setSelectedMovieId(movieId);
+
     if (movieId) {
-      const movie = movies.find(m => m.imdbID === movieId);
-      if (movie) {
-        setFormData({
-          ...formData,
-          title: movie.Title,
-          description: movie.Plot || ''
-        });
+      // Fetch full movie details from OMDB
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/movies/${movieId}`);
+        const movie = await res.json();
+        if (movie.Response === 'True') {
+          setFormData({
+            ...formData,
+            title: movie.Title,
+            description: movie.Plot || ''
+          });
+        }
+      } catch (e) {
+        // Fallback to just using title from the list
+        const movie = movies.find(m => m.imdbID === movieId);
+        if (movie) {
+          setFormData({
+            ...formData,
+            title: movie.Title,
+            description: ''
+          });
+        }
       }
     } else {
       setFormData({
@@ -159,7 +204,11 @@ function ReviewForm() {
           {formData.category === 'movies' && movies.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">Select Movie</label>
-              <select onChange={handleMovieSelect} value="" className="input">
+              <select
+                onChange={handleMovieSelect}
+                value={selectedMovieId}
+                className="input"
+              >
                 <option value="">-- Or type a custom title below --</option>
                 {movies.map(movie => (
                   <option key={movie.imdbID} value={movie.imdbID}>
