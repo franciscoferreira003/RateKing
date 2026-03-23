@@ -1,15 +1,24 @@
 const { Pool } = require('pg');
 
-// Use DATABASE_URL environment variable for Render, or local connection
+// Configure pool for Neon
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: process.env.DATABASE_URL ? {
+    rejectUnauthorized: false
+  } : false
+});
+
+// Log connection errors
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
 });
 
 async function initializeDatabase() {
-  const client = await pool.connect();
-
+  let client;
   try {
+    client = await pool.connect();
+    console.log('Connected to database');
+
     // Create users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -21,6 +30,7 @@ async function initializeDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log('Users table created/verified');
 
     // Create reviews table
     await client.query(`
@@ -35,6 +45,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    console.log('Reviews table created/verified');
 
     // Create movies table
     await client.query(`
@@ -50,6 +61,7 @@ async function initializeDatabase() {
         imdb_rating VARCHAR(10)
       )
     `);
+    console.log('Movies table created/verified');
 
     // Check if admin user exists, if not create one
     const adminCheck = await client.query("SELECT * FROM users WHERE email = 'admin@reviewapp.com'");
@@ -68,11 +80,16 @@ async function initializeDatabase() {
         new Date().toISOString()
       ]);
       console.log('Admin user created');
+    } else {
+      console.log('Admin user already exists');
     }
 
     console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Database initialization error:', err);
+    throw err;
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
