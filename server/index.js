@@ -38,6 +38,20 @@ function writeJsonFile(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
+// Helper to transform database rows to camelCase
+function transformReview(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    rating: row.rating,
+    description: row.description,
+    category: row.category,
+    userId: row.user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 // Auth middleware
 const authMiddleware = async (req, res, next) => {
   console.log('Auth middleware - checking token');
@@ -412,7 +426,7 @@ app.get('/api/reviews/:category', async (req, res) => {
         'SELECT * FROM reviews WHERE category = $1 ORDER BY created_at DESC',
         [category]
       );
-      res.json(result.rows);
+      res.json(result.rows.map(transformReview));
     } else {
       const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
       res.json(data[category] || []);
@@ -431,7 +445,7 @@ app.get('/api/reviews', async (req, res) => {
       const grouped = { movies: [], songs: [], videogames: [], shows: [] };
       for (const row of result.rows) {
         if (grouped[row.category]) {
-          grouped[row.category].push(row);
+          grouped[row.category].push(transformReview(row));
         }
       }
       res.json(grouped);
@@ -461,7 +475,7 @@ app.post('/api/reviews/:category', authMiddleware, async (req, res) => {
         [id, req.body.title, req.body.rating, req.body.description, category, req.userId, new Date(), new Date()]
       );
       console.log('Review created:', id);
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(transformReview(result.rows[0]));
     } else {
       const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
       if (!data[category]) data[category] = [];
@@ -588,7 +602,7 @@ app.get('/api/admin/reviews', adminMiddleware, async (req, res) => {
   try {
     if (USE_DATABASE) {
       const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
-      res.json(result.rows);
+      res.json(result.rows.map(transformReview));
     } else {
       const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
       const allReviews = [];
@@ -651,7 +665,7 @@ app.get('/api/search', async (req, res) => {
       const grouped = { movies: [], songs: [], videogames: [], shows: [] };
       for (const row of result.rows) {
         if (grouped[row.category]) {
-          grouped[row.category].push(row);
+          grouped[row.category].push(transformReview(row));
         }
       }
       res.json(grouped);
@@ -722,13 +736,13 @@ app.get('/api/movies/:id', async (req, res) => {
   }
 });
 
-// Get popular movies (OMDB doesn't have this, so we return stored movies)
+// Get movies (only movies, not series)
 app.get('/api/movies', async (req, res) => {
   console.log('=== GET ALL MOVIES ===');
 
   try {
-    // Always fetch popular movies from OMDB API
-    const popularSearches = ['star wars', 'marvel', 'harry potter', 'lord of the rings', 'inception'];
+    // Fetch only movies from OMDB API
+    const popularSearches = ['star wars', 'marvel', 'inception', 'matrix', 'avatar'];
     const allMovies = [];
     const seenIds = new Set();
 
@@ -738,7 +752,6 @@ app.get('/api/movies', async (req, res) => {
         const data = await response.json();
         if (data.Response === 'True' && data.Search) {
           for (const movie of data.Search) {
-            // Skip duplicates
             if (!seenIds.has(movie.imdbID)) {
               seenIds.add(movie.imdbID);
               allMovies.push(movie);
@@ -755,6 +768,41 @@ app.get('/api/movies', async (req, res) => {
   } catch (err) {
     console.error('Get movies - Error:', err);
     res.status(500).json({ error: 'Failed to fetch movies' });
+  }
+});
+
+// Get shows (series)
+app.get('/api/shows', async (req, res) => {
+  console.log('=== GET ALL SHOWS ===');
+
+  try {
+    // Fetch only series from OMDB API
+    const popularSearches = ['breaking bad', 'game of thrones', 'stranger things', 'the office', 'friends'];
+    const allShows = [];
+    const seenIds = new Set();
+
+    for (const search of popularSearches) {
+      try {
+        const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=series`);
+        const data = await response.json();
+        if (data.Response === 'True' && data.Search) {
+          for (const show of data.Search) {
+            if (!seenIds.has(show.imdbID)) {
+              seenIds.add(show.imdbID);
+              allShows.push(show);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error fetching ${search}:`, e.message);
+      }
+    }
+
+    console.log('Shows found from OMDB:', allShows.length);
+    res.json({ Response: 'True', Search: allShows });
+  } catch (err) {
+    console.error('Get shows - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch shows' });
   }
 });
 
