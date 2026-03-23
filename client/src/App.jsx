@@ -80,18 +80,22 @@ function Header() {
 
           {user ? (
             <>
-              <Link to={`/profile/${user.id}`} className="group" title={user.username}>
-                <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-yellow-500/50 group-hover:border-yellow-400 transition-all shadow-lg group-hover:shadow-yellow-500/20">
+              <Link
+                to={user.id ? `/profile/${user.id}` : '#'}
+                className="flex items-center gap-2 btn btn-secondary text-xs py-1.5 px-3"
+              >
+                <div className="w-6 h-6 rounded-full overflow-hidden border border-yellow-500/50">
                   {user.profilePicture ? (
                     <img src={user.profilePicture} alt={user.username} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white/60" fill="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 text-white/60" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                       </svg>
                     </div>
                   )}
                 </div>
+                <span className="hidden sm:inline">{user.username}</span>
               </Link>
               <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3">
                 Logout
