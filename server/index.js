@@ -5,15 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
-// Simple UUID generator
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+const { pool, initializeDatabase, generateId } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,34 +14,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-producti
 app.use(cors());
 app.use(bodyParser.json());
 
-const DATA_FILE = path.join(__dirname, 'reviews.json');
-const USERS_FILE = path.join(__dirname, 'users.json');
-const MOVIES_FILE = path.join(__dirname, 'movies.json');
-
-// Initialize data files
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({
-    movies: [],
-    songs: [],
-    videogames: [],
-    shows: []
-  }, null, 2));
-}
-
-if (!fs.existsSync(USERS_FILE)) {
-  const adminPassword = bcrypt.hashSync('AlPaFrGo2003_', 10);
-  fs.writeFileSync(USERS_FILE, JSON.stringify([{
-    id: generateId(),
-    username: 'admin',
-    email: 'admin@reviewapp.com',
-    password: adminPassword,
-    isAdmin: true,
-    createdAt: new Date().toISOString()
-  }], null, 2));
-}
-
 // Auth middleware
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
@@ -64,16 +30,16 @@ const authMiddleware = (req, res, next) => {
 };
 
 // Admin middleware
-const adminMiddleware = (req, res, next) => {
+const adminMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    const user = users.find(u => u.id === decoded.userId);
-    if (!user || !user.isAdmin) {
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
+    const user = result.rows[0];
+    if (!user || !user.is_admin) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     req.userId = decoded.userId;
@@ -85,242 +51,270 @@ const adminMiddleware = (req, res, next) => {
 };
 
 // Get all reviews by category
-app.get('/api/reviews/:category', (req, res) => {
+app.get('/api/reviews/:category', async (req, res) => {
   const { category } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-  if (!data[category]) {
+  const validCategories = ['movies', 'songs', 'videogames', 'shows'];
+  if (!validCategories.includes(category)) {
     return res.status(400).json({ error: 'Invalid category' });
   }
-
-  res.json(data[category]);
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE category = $1 ORDER BY created_at DESC',
+      [category]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
 });
 
 // Get all reviews across all categories
-app.get('/api/reviews', (req, res) => {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  res.json(data);
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
+    const grouped = { movies: [], songs: [], videogames: [], shows: [] };
+    for (const row of result.rows) {
+      if (grouped[row.category]) {
+        grouped[row.category].push(row);
+      }
+    }
+    res.json(grouped);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
 });
 
 // Get single review
-app.get('/api/reviews/:category/:id', (req, res) => {
+app.get('/api/reviews/:category/:id', async (req, res) => {
   const { category, id } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-  if (!data[category]) {
-    return res.status(400).json({ error: 'Invalid category' });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE category = $1 AND id = $2',
+      [category, parseInt(id)]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch review' });
   }
-
-  const review = data[category].find(r => r.id === parseInt(id));
-  if (!review) {
-    return res.status(404).json({ error: 'Review not found' });
-  }
-
-  res.json(review);
 });
 
 // Create new review
-app.post('/api/reviews/:category', authMiddleware, (req, res) => {
+app.post('/api/reviews/:category', authMiddleware, async (req, res) => {
   const { category } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-  if (!data[category]) {
+  const validCategories = ['movies', 'songs', 'videogames', 'shows'];
+  if (!validCategories.includes(category)) {
     return res.status(400).json({ error: 'Invalid category' });
   }
 
-  const newReview = {
-    id: Date.now(),
-    title: req.body.title,
-    rating: req.body.rating,
-    description: req.body.description,
-    userId: req.userId,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  data[category].push(newReview);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-
-  res.status(201).json(newReview);
+  try {
+    const id = Date.now();
+    const result = await pool.query(
+      'INSERT INTO reviews (id, title, rating, description, category, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+      [id, req.body.title, req.body.rating, req.body.description, category, req.userId, new Date(), new Date()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create review' });
+  }
 });
 
 // Update review
-app.put('/api/reviews/:category/:id', authMiddleware, (req, res) => {
+app.put('/api/reviews/:category/:id', authMiddleware, async (req, res) => {
   const { category, id } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  try {
+    const checkResult = await pool.query(
+      'SELECT * FROM reviews WHERE category = $1 AND id = $2',
+      [category, parseInt(id)]
+    );
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    const review = checkResult.rows[0];
+    if (review.user_id !== req.userId) {
+      return res.status(403).json({ error: 'Not authorized to edit this review' });
+    }
 
-  if (!data[category]) {
-    return res.status(400).json({ error: 'Invalid category' });
+    const result = await pool.query(
+      'UPDATE reviews SET title = $1, rating = $2, description = $3, updated_at = $4 WHERE id = $5 RETURNING *',
+      [req.body.title, req.body.rating, req.body.description, new Date(), parseInt(id)]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update review' });
   }
-
-  const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
-  if (reviewIndex === -1) {
-    return res.status(404).json({ error: 'Review not found' });
-  }
-
-  const review = data[category][reviewIndex];
-  if (review.userId !== req.userId) {
-    return res.status(403).json({ error: 'Not authorized to edit this review' });
-  }
-
-  data[category][reviewIndex] = {
-    ...data[category][reviewIndex],
-    title: req.body.title,
-    rating: req.body.rating,
-    description: req.body.description,
-    updatedAt: new Date().toISOString()
-  };
-
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-
-  res.json(data[category][reviewIndex]);
 });
 
 // Delete review
-app.delete('/api/reviews/:category/:id', authMiddleware, (req, res) => {
+app.delete('/api/reviews/:category/:id', authMiddleware, async (req, res) => {
   const { category, id } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  try {
+    const checkResult = await pool.query(
+      'SELECT * FROM reviews WHERE category = $1 AND id = $2',
+      [category, parseInt(id)]
+    );
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    const review = checkResult.rows[0];
+    if (review.user_id !== req.userId && !req.isAdmin) {
+      return res.status(403).json({ error: 'Not authorized to delete this review' });
+    }
 
-  if (!data[category]) {
-    return res.status(400).json({ error: 'Invalid category' });
+    await pool.query('DELETE FROM reviews WHERE id = $1', [parseInt(id)]);
+    res.json(review);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete review' });
   }
-
-  const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
-  if (reviewIndex === -1) {
-    return res.status(404).json({ error: 'Review not found' });
-  }
-
-  const review = data[category][reviewIndex];
-  if (review.userId !== req.userId && !req.isAdmin) {
-    return res.status(403).json({ error: 'Not authorized to delete this review' });
-  }
-
-  const deleted = data[category].splice(reviewIndex, 1);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-
-  res.json(deleted[0]);
 });
 
 // Admin routes
-app.get('/api/admin/users', adminMiddleware, (req, res) => {
-  const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  const userList = users.map(u => ({ id: u.id, username: u.username, email: u.email, isAdmin: u.isAdmin, createdAt: u.createdAt }));
-  res.json(userList);
+app.get('/api/admin/users', adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, username, email, is_admin, created_at FROM users ORDER BY created_at DESC');
+    res.json(result.rows.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      isAdmin: u.is_admin,
+      createdAt: u.created_at
+    })));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
 });
 
-app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
-  const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  const userIndex = users.findIndex(u => u.id === req.params.id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
+app.delete('/api/admin/users/:id', adminMiddleware, async (req, res) => {
+  try {
+    const checkResult = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (checkResult.rows[0].is_admin) {
+      return res.status(403).json({ error: 'Cannot delete admin user' });
+    }
+    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ message: 'User deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
   }
-  if (users[userIndex].isAdmin) {
-    return res.status(403).json({ error: 'Cannot delete admin user' });
-  }
-  const deleted = users.splice(userIndex, 1);
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  res.json({ message: 'User deleted', user: deleted[0] });
 });
 
 app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
-  const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  const userIndex = users.findIndex(u => u.id === req.params.id);
-  if (userIndex === -1) {
-    return res.status(404).json({ error: 'User not found' });
-  }
   const { username, email, isAdmin, password } = req.body;
-  users[userIndex] = {
-    ...users[userIndex],
-    username: username || users[userIndex].username,
-    email: email || users[userIndex].email,
-    isAdmin: isAdmin !== undefined ? isAdmin : users[userIndex].isAdmin,
-    password: password ? await bcrypt.hash(password, 10) : users[userIndex].password
-  };
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  res.json({ id: users[userIndex].id, username: users[userIndex].username, email: users[userIndex].email, isAdmin: users[userIndex].isAdmin });
-});
+  try {
+    const checkResult = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-app.get('/api/admin/reviews', adminMiddleware, (req, res) => {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  const allReviews = [];
-  for (const [cat, reviews] of Object.entries(data)) {
-    allReviews.push(...reviews.map(r => ({ ...r, category: cat })));
+    let updateQuery = 'UPDATE users SET username = $1, email = $2, is_admin = $3';
+    let params = [username || checkResult.rows[0].username, email || checkResult.rows[0].email, isAdmin !== undefined ? isAdmin : checkResult.rows[0].is_admin];
+
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      updateQuery += ', password = $4 WHERE id = $5 RETURNING *';
+      params.push(hashedPassword, req.params.id);
+    } else {
+      updateQuery += ' WHERE id = $4 RETURNING *';
+      params.push(req.params.id);
+    }
+
+    const result = await pool.query(updateQuery, params);
+    res.json({
+      id: result.rows[0].id,
+      username: result.rows[0].username,
+      email: result.rows[0].email,
+      isAdmin: result.rows[0].is_admin
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user' });
   }
-  res.json(allReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
-app.delete('/api/admin/reviews/:category/:id', adminMiddleware, (req, res) => {
+app.get('/api/admin/reviews', adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.delete('/api/admin/reviews/:category/:id', adminMiddleware, async (req, res) => {
   const { category, id } = req.params;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-
-  if (!data[category]) {
-    return res.status(400).json({ error: 'Invalid category' });
+  try {
+    const result = await pool.query('DELETE FROM reviews WHERE category = $1 AND id = $2 RETURNING *', [category, parseInt(id)]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Review not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete review' });
   }
-
-  const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
-  if (reviewIndex === -1) {
-    return res.status(404).json({ error: 'Review not found' });
-  }
-
-  const deleted = data[category].splice(reviewIndex, 1);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-
-  res.json(deleted[0]);
 });
 
 // Get user's reviews
-app.get('/api/users/reviews', authMiddleware, (req, res) => {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  const userReviews = [];
-  for (const [cat, reviews] of Object.entries(data)) {
-    userReviews.push(...reviews.filter(r => r.userId === req.userId).map(r => ({ ...r, category: cat })));
+app.get('/api/users/reviews', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM reviews WHERE user_id = $1 ORDER BY created_at DESC', [req.userId]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch reviews' });
   }
-  res.json(userReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
 // Search reviews
-app.get('/api/search', (req, res) => {
+app.get('/api/search', async (req, res) => {
   const { q, category } = req.query;
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  try {
+    let query = 'SELECT * FROM reviews WHERE (LOWER(title) LIKE $1 OR LOWER(description) LIKE $1)';
+    const params = [`%${q?.toLowerCase() || ''}%`];
 
-  const results = {};
-  const categories = category ? [category] : Object.keys(data);
+    if (category) {
+      query += ' AND category = $2';
+      params.push(category);
+    }
 
-  for (const cat of categories) {
-    results[cat] = data[cat].filter(r =>
-      r.title.toLowerCase().includes(q?.toLowerCase()) ||
-      r.description.toLowerCase().includes(q?.toLowerCase())
-    );
+    const result = await pool.query(query, params);
+
+    const grouped = { movies: [], songs: [], videogames: [], shows: [] };
+    for (const row of result.rows) {
+      if (grouped[row.category]) {
+        grouped[row.category].push(row);
+      }
+    }
+    res.json(grouped);
+  } catch (err) {
+    res.status(500).json({ error: 'Search failed' });
   }
-
-  res.json(results);
 });
 
 // Auth routes
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
 
-    if (users.find(u => u.email === email)) {
+    const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (existingUser.rows.length > 0) {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = {
-      id: generateId(),
-      username,
-      email,
-      password: hashedPassword,
-      createdAt: new Date().toISOString()
-    };
+    const id = generateId();
 
-    users.push(newUser);
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    const result = await pool.query(
+      'INSERT INTO users (id, username, email, password, is_admin, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [id, username, email, hashedPassword, false, new Date()]
+    );
 
-    const token = jwt.sign({ userId: newUser.id }, JWT_SECRET, { expiresIn: '7d' });
-    res.status(201).json({ token, user: { id: newUser.id, username, email, isAdmin: newUser.isAdmin || false } });
+    const user = result.rows[0];
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    res.status(201).json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin } });
   } catch (err) {
+    console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -328,86 +322,132 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
 
-    const user = users.find(u => u.email === email);
-    if (!user) {
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    const user = result.rows[0];
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.isAdmin } });
+    res.json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin } });
   } catch (err) {
+    console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
   }
 });
 
-app.get('/api/auth/me', authMiddleware, (req, res) => {
-  const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  const user = users.find(u => u.id === req.userId);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, username, email, is_admin FROM users WHERE id = $1', [req.userId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const user = result.rows[0];
+    res.json({ id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
-  res.json({ id: user.id, username: user.username, email: user.email, isAdmin: user.isAdmin });
 });
 
-app.get('/api/users/:id', (req, res) => {
-  const users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  const user = users.find(u => u.id === req.params.id);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, username FROM users WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
-  res.json({ id: user.id, username: user.username });
 });
 
 // Movies API - Search movies
-app.get('/api/movies/search', (req, res) => {
+app.get('/api/movies/search', async (req, res) => {
   const { query } = req.query;
-  const movies = JSON.parse(fs.readFileSync(MOVIES_FILE, 'utf8'));
-  if (!query) {
-    return res.json({ Response: 'True', Search: movies });
+  try {
+    if (!query) {
+      const result = await pool.query('SELECT * FROM movies');
+      return res.json({ Response: 'True', Search: result.rows });
+    }
+    const result = await pool.query(
+      'SELECT * FROM movies WHERE LOWER(title) LIKE $1 OR LOWER(director) LIKE $1 OR LOWER(actors) LIKE $1',
+      [`%${query.toLowerCase()}%`]
+    );
+    res.json({ Response: 'True', Search: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to search movies' });
   }
-  const results = movies.filter(m =>
-    m.Title.toLowerCase().includes(query.toLowerCase()) ||
-    m.Director?.toLowerCase().includes(query.toLowerCase()) ||
-    m.Actors?.toLowerCase().includes(query.toLowerCase())
-  );
-  res.json({ Response: 'True', Search: results });
 });
 
 // Movies API - Get movie details
-app.get('/api/movies/:id', (req, res) => {
+app.get('/api/movies/:id', async (req, res) => {
   const { id } = req.params;
-  const movies = JSON.parse(fs.readFileSync(MOVIES_FILE, 'utf8'));
-  const movie = movies.find(m => m.imdbID === id);
-  if (movie) {
-    res.json({ Response: 'True', ...movie });
-  } else {
-    res.json({ Response: 'False', Error: 'Movie not found' });
+  try {
+    const result = await pool.query('SELECT * FROM movies WHERE imdb_id = $1', [id]);
+    if (result.rows.length > 0) {
+      res.json({ Response: 'True', ...result.rows[0] });
+    } else {
+      res.json({ Response: 'False', Error: 'Movie not found' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch movie' });
   }
 });
 
 // Movies API - Get all movies
-app.get('/api/movies', (req, res) => {
-  const movies = JSON.parse(fs.readFileSync(MOVIES_FILE, 'utf8'));
-  res.json({ Response: 'True', Search: movies });
+app.get('/api/movies', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM movies');
+    res.json({ Response: 'True', Search: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch movies' });
+  }
 });
 
-// Serve static frontend if dist folder exists (production build)
-const distPath = path.join(__dirname, '../dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.get('/*path', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+// Initialize database and start server
+async function startServer() {
+  try {
+    await initializeDatabase();
+    console.log('Database initialized');
+
+    // Load initial movies data if needed
+    const moviesCount = await pool.query('SELECT COUNT(*) FROM movies');
+    if (parseInt(moviesCount.rows[0].count) === 0) {
+      const moviesFile = path.join(__dirname, 'movies.json');
+      if (fs.existsSync(moviesFile)) {
+        const movies = JSON.parse(fs.readFileSync(moviesFile, 'utf8'));
+        for (const movie of movies) {
+          await pool.query(
+            'INSERT INTO movies (imdb_id, title, year, poster, plot, director, actors, genre, imdb_rating) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (imdb_id) DO NOTHING',
+            [movie.imdbID, movie.Title, movie.Year, movie.Poster, movie.Plot, movie.Director, movie.Actors, movie.Genre, movie.imdbRating]
+          );
+        }
+        console.log('Movies loaded from file');
+      }
+    }
+  } catch (err) {
+    console.error('Database initialization error:', err);
+  }
+
+  // Serve static frontend if dist folder exists (production build)
+  const distPath = path.join(__dirname, '../dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('/*path', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
-});
+startServer();
