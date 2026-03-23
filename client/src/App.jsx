@@ -56,7 +56,7 @@ function Header() {
         </nav>
 
         {/* Right side */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <span className="px-2 py-1 rounded-full text-xs bg-white/5 text-yellow-400 border border-yellow-500/20">
             {getTotalReviews()} reviews
           </span>
@@ -80,7 +80,7 @@ function Header() {
 
           {user ? (
             <>
-              <Link to={`/profile/${user.id}`} className="group relative">
+              <Link to={`/profile/${user.id}`} className="group" title={user.username}>
                 <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-yellow-500/50 group-hover:border-yellow-400 transition-all shadow-lg group-hover:shadow-yellow-500/20">
                   {user.profilePicture ? (
                     <img src={user.profilePicture} alt={user.username} className="w-full h-full object-cover" />
@@ -92,9 +92,6 @@ function Header() {
                     </div>
                   )}
                 </div>
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                  {user.username}
-                </span>
               </Link>
               <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3">
                 Logout
