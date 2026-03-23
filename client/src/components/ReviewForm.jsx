@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import API_BASE_URL from '../config';
 import './ReviewForm.css';
 
-const categories = ['movies', 'songs', 'videogames', 'shows'];
+const categories = ['movies', 'shows', 'songs', 'videogames'];
+const searchableCategories = ['movies', 'shows'];
 
 function ReviewForm() {
   const { id } = useParams();
@@ -19,8 +20,10 @@ function ReviewForm() {
   });
   const [hoverRating, setHoverRating] = useState(0);
   const [error, setError] = useState('');
-  const [movies, setMovies] = useState([]);
-  const [selectedMovieId, setSelectedMovieId] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [searching, setSearching] = useState(false);
 
   // Set initial form data from URL params
   useEffect(() => {
@@ -35,6 +38,7 @@ function ReviewForm() {
     }
   }, [searchParams]);
 
+  // Load existing review for editing
   useEffect(() => {
     if (id) {
       const searchReview = async () => {
@@ -57,73 +61,89 @@ function ReviewForm() {
     }
   }, [id]);
 
+  // Clear search when category changes
   useEffect(() => {
-    if (formData.category === 'movies') {
-      fetchMovies();
-    } else {
-      setMovies([]);
-      setSelectedMovieId('');
-    }
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedItem(null);
   }, [formData.category]);
 
-  const fetchMovies = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/movies`);
-      const data = await res.json();
-      if (data.Response === 'True') {
-        const movieList = data.Search || [];
-        setMovies(movieList);
+  const searchItems = async (query) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
 
-        // If we have a title from URL params, try to find matching movie
-        const title = searchParams.get('title');
-        if (title) {
-          const matchingMovie = movieList.find(m =>
-            m.Title.toLowerCase() === title.toLowerCase()
-          );
-          if (matchingMovie) {
-            setSelectedMovieId(matchingMovie.imdbID);
-          }
-        }
+    setSearching(true);
+    try {
+      const endpoint = formData.category === 'movies'
+        ? `${API_BASE_URL}/api/movies/search?query=${encodeURIComponent(query)}`
+        : `${API_BASE_URL}/api/shows/search?query=${encodeURIComponent(query)}`;
+
+      const res = await fetch(endpoint);
+      const data = await res.json();
+
+      if (data.Response === 'True') {
+        setSearchResults(data.Search || []);
+      } else {
+        setSearchResults([]);
       }
     } catch (e) {
-      console.error('Failed to fetch movies:', e);
+      console.error('Search failed:', e);
+      setSearchResults([]);
     }
+    setSearching(false);
   };
 
-  const handleMovieSelect = async (e) => {
-    const movieId = e.target.value;
-    setSelectedMovieId(movieId);
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
 
-    if (movieId) {
-      // Fetch full movie details from OMDB
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/movies/${movieId}`);
-        const movie = await res.json();
-        if (movie.Response === 'True') {
-          setFormData({
-            ...formData,
-            title: movie.Title,
-            description: movie.Plot || ''
-          });
-        }
-      } catch (e) {
-        // Fallback to just using title from the list
-        const movie = movies.find(m => m.imdbID === movieId);
-        if (movie) {
-          setFormData({
-            ...formData,
-            title: movie.Title,
-            description: ''
-          });
-        }
+    // Debounce search
+    clearTimeout(window.searchTimeout);
+    window.searchTimeout = setTimeout(() => {
+      searchItems(query);
+    }, 300);
+  };
+
+  const handleItemSelect = async (item) => {
+    setSelectedItem(item);
+    setSearchQuery(item.Title);
+    setSearchResults([]);
+
+    // Fetch full details
+    try {
+      const endpoint = formData.category === 'movies'
+        ? `${API_BASE_URL}/api/movies/${item.imdbID}`
+        : `${API_BASE_URL}/api/shows/${item.imdbID}`;
+
+      const res = await fetch(endpoint);
+      const data = await res.json();
+
+      if (data.Response === 'True') {
+        setFormData({
+          ...formData,
+          title: data.Title,
+          description: data.Plot || ''
+        });
       }
-    } else {
+    } catch (e) {
       setFormData({
         ...formData,
-        title: '',
+        title: item.Title,
         description: ''
       });
     }
+  };
+
+  const clearSelection = () => {
+    setSelectedItem(null);
+    setSearchQuery('');
+    setFormData({
+      ...formData,
+      title: '',
+      description: ''
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -172,6 +192,16 @@ function ReviewForm() {
     ));
   };
 
+  const getCategoryLabel = (cat) => {
+    const labels = {
+      movies: '🎬 Movie',
+      shows: '📺 TV Show',
+      songs: '🎵 Song',
+      videogames: '🎮 Video Game'
+    };
+    return labels[cat] || cat;
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="glass p-8 rounded-3xl gold-glow">
@@ -195,27 +225,91 @@ function ReviewForm() {
             >
               {categories.map(cat => (
                 <option key={cat} value={cat}>
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  {getCategoryLabel(cat)}
                 </option>
               ))}
             </select>
           </div>
 
-          {formData.category === 'movies' && movies.length > 0 && (
+          {/* Search box for movies and shows */}
+          {searchableCategories.includes(formData.category) && (
             <div>
-              <label className="block text-sm font-medium text-white/80 mb-2">Select Movie</label>
-              <select
-                onChange={handleMovieSelect}
-                value={selectedMovieId}
-                className="input"
-              >
-                <option value="">-- Or type a custom title below --</option>
-                {movies.map(movie => (
-                  <option key={movie.imdbID} value={movie.imdbID}>
-                    {movie.Title} ({movie.Year})
-                  </option>
-                ))}
-              </select>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Search {formData.category === 'movies' ? 'Movie' : 'TV Show'}
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  placeholder={`Search for ${formData.category}...`}
+                  className="input pr-10"
+                  autoComplete="off"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                )}
+
+                {/* Search results dropdown */}
+                {searchResults.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/20 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                    {searchResults.map(item => (
+                      <div
+                        key={item.imdbID}
+                        className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition-colors"
+                        onClick={() => handleItemSelect(item)}
+                      >
+                        {item.Poster && item.Poster !== 'N/A' && (
+                          <img
+                            src={item.Poster}
+                            alt={item.Title}
+                            className="w-10 h-14 object-cover rounded"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-medium truncate">{item.Title}</p>
+                          <p className="text-white/50 text-sm">{item.Year}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {searching && (
+                  <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/20 rounded-xl p-4 text-center">
+                    <p className="text-white/50">Searching...</p>
+                  </div>
+                )}
+              </div>
+
+              {selectedItem && (
+                <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-center gap-3">
+                  {selectedItem.Poster && selectedItem.Poster !== 'N/A' && (
+                    <img
+                      src={selectedItem.Poster}
+                      alt={selectedItem.Title}
+                      className="w-10 h-14 object-cover rounded"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <p className="text-white font-medium">{selectedItem.Title}</p>
+                    <p className="text-white/50 text-sm">{selectedItem.Year}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="text-white/50 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -225,7 +319,7 @@ function ReviewForm() {
               type="text"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="Enter title..."
+              placeholder={searchableCategories.includes(formData.category) ? "Or type a custom title..." : "Enter title..."}
               required
               className="input"
             />
