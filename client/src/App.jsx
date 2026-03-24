@@ -9,6 +9,7 @@ import Register from './components/Register';
 import Admin from './components/Admin';
 import UsersManagement from './components/UsersManagement';
 import Media from './components/Media';
+import Songs from './components/Songs';
 import MovieForm from './components/MovieForm';
 import Profile from './components/Profile';
 import API_BASE_URL from './config';
@@ -47,7 +48,7 @@ function Header() {
           <Link to="/media" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
             🎬 Movies & Shows
           </Link>
-          <Link to="/category/songs" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
+          <Link to="/songs" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
             🎵 Songs
           </Link>
           <Link to="/category/videogames" className="px-3 py-1.5 rounded-full text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-all">
@@ -135,6 +136,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<ReviewList category={null} allReviews={allReviews} />} />
             <Route path="/media" element={<Media />} />
+            <Route path="/songs" element={<Songs />} />
             <Route path="/profile/:id" element={<Profile />} />
             <Route path="/movies/new" element={<MovieForm />} />
             <Route path="/category/:category" element={<ReviewList category={null} allReviews={allReviews} />} />
