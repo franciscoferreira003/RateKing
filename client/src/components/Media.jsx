@@ -176,15 +176,15 @@ function Media() {
       {/* Detail Modal */}
       {selectedItem && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
           onClick={closeModal}
         >
           <div
-            className="glass max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-3xl gold-glow"
+            className="glass max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-xl transition-all hover:rotate-90 duration-300"
+              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white text-xl transition-all z-10"
               onClick={closeModal}
             >
               ×

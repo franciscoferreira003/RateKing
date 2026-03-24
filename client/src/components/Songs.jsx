@@ -11,6 +11,7 @@ function Songs() {
   const [loading, setLoading] = useState(true);
   const [selectedAlbum, setSelectedAlbum] = useState(null);
   const [albumDetails, setAlbumDetails] = useState(null);
+  const [selectedTrack, setSelectedTrack] = useState(null);
 
   useEffect(() => {
     fetchAlbums();
@@ -59,6 +60,7 @@ function Songs() {
   const handleAlbumSelect = async (album) => {
     setSelectedAlbum(album);
     setAlbumDetails(null);
+    setSelectedTrack(null);
     try {
       const res = await fetch(`${API_BASE_URL}/api/songs/${album.id}`);
       const data = await res.json();
@@ -73,6 +75,11 @@ function Songs() {
   const closeModal = () => {
     setSelectedAlbum(null);
     setAlbumDetails(null);
+    setSelectedTrack(null);
+  };
+
+  const handleTrackClick = (track) => {
+    setSelectedTrack(track);
   };
 
   return (
@@ -139,15 +146,15 @@ function Songs() {
       {/* Album Detail Modal */}
       {selectedAlbum && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
           onClick={closeModal}
         >
           <div
-            className="glass max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-2xl gold-glow"
+            className="glass max-w-md w-full max-h-[85vh] overflow-y-auto rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg transition-all hover:rotate-90 duration-300"
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white text-lg transition-all z-10"
               onClick={closeModal}
             >
               ×
@@ -157,14 +164,14 @@ function Songs() {
               <img
                 src={selectedAlbum.poster || 'https://via.placeholder.com/200x200?text=No+Cover'}
                 alt={selectedAlbum.title}
-                className="w-40 h-40 rounded-xl shadow-lg mb-4"
+                className="w-32 h-32 rounded-xl shadow-lg mb-3"
               />
 
               <h3 className="text-lg font-bold text-white mb-1">
                 {selectedAlbum.title}
               </h3>
-              <p className="text-yellow-400 mb-1">{selectedAlbum.artist}</p>
-              <p className="text-white/50 text-sm mb-3">{selectedAlbum.year}</p>
+              <p className="text-yellow-400 text-sm mb-1">{selectedAlbum.artist}</p>
+              <p className="text-white/50 text-xs mb-3">{selectedAlbum.year}</p>
 
               {albumDetails?.genre && (
                 <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs mb-3">
@@ -172,27 +179,52 @@ function Songs() {
                 </span>
               )}
 
-              {albumDetails?.tracks && albumDetails.tracks.length > 0 && (
-                <div className="w-full mb-3 text-left">
-                  <p className="text-white/70 text-xs mb-1">Tracks:</p>
-                  <ul className="text-white/50 text-xs space-y-0.5 max-h-24 overflow-y-auto">
-                    {albumDetails.tracks.slice(0, 10).map((track, i) => (
-                      <li key={track.id || i}>{i + 1}. {track.title}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
+              {/* Review Album Button */}
               {user ? (
                 <Link
                   to={`/category/songs/new?title=${encodeURIComponent(`${selectedAlbum.title} - ${selectedAlbum.artist}`)}&description=${encodeURIComponent(albumDetails?.genre || '')}`}
-                  className="btn btn-primary text-sm py-2 px-4"
+                  className="btn btn-primary text-sm py-2 px-4 mb-4 w-full"
                 >
-                  ✍️ Write a Review
+                  💿 Review Album
                 </Link>
               ) : (
-                <Link to="/login" className="btn btn-primary text-sm py-2 px-4">
+                <Link to="/login" className="btn btn-primary text-sm py-2 px-4 mb-4 w-full">
                   Login to Review
+                </Link>
+              )}
+
+              {/* Tracks List */}
+              {albumDetails?.tracks && albumDetails.tracks.length > 0 && (
+                <div className="w-full text-left">
+                  <p className="text-white/70 text-xs mb-2 font-medium">Or review a track:</p>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {albumDetails.tracks.map((track, i) => (
+                      <div
+                        key={track.id || i}
+                        className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                          selectedTrack === track
+                            ? 'bg-yellow-500/20 border border-yellow-500/50'
+                            : 'bg-white/5 hover:bg-white/10'
+                        }`}
+                        onClick={() => handleTrackClick(track)}
+                      >
+                        <p className="text-white text-sm truncate">
+                          <span className="text-white/50 mr-2">{i + 1}.</span>
+                          {track.title}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Selected Track Review Button */}
+              {selectedTrack && user && (
+                <Link
+                  to={`/category/songs/new?title=${encodeURIComponent(`${selectedTrack.title} - ${selectedAlbum.artist}`)}&description=${encodeURIComponent(`${selectedAlbum.title} album`)}`}
+                  className="btn btn-secondary text-sm py-2 px-4 mt-3 w-full"
+                >
+                  🎵 Review "{selectedTrack.title}"
                 </Link>
               )}
             </div>
