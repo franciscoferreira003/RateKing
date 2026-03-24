@@ -1208,6 +1208,116 @@ app.get('/api/songs/:id', async (req, res) => {
   }
 });
 
+// ============ RAWG API FOR VIDEO GAMES ============
+
+const RAWG_URL = 'https://api.rawg.io/api';
+const RAWG_API_KEY = process.env.RAWG_API_KEY || ''; // Optional for basic usage
+
+// Helper to add API key to RAWG requests
+const getRawgUrl = (endpoint, params = {}) => {
+  const url = new URL(`${RAWG_URL}${endpoint}`);
+  if (RAWG_API_KEY) {
+    url.searchParams.append('key', RAWG_API_KEY);
+  }
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      url.searchParams.append(key, value);
+    }
+  });
+  return url.toString();
+};
+
+// Search video games from RAWG API
+app.get('/api/games/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH GAMES (RAWG) ===', query);
+
+  if (!query || !query.trim()) {
+    return res.json({ results: [] });
+  }
+
+  try {
+    const response = await fetch(getRawgUrl('/games', { search: query, page_size: 20 }));
+    const data = await response.json();
+
+    const results = (data.results || []).map(game => ({
+      id: game.id,
+      title: game.name,
+      year: game.released ? new Date(game.released).getFullYear() : '',
+      poster: game.background_image,
+      rating: game.rating,
+      genres: game.genres?.map(g => g.name).join(', ') || ''
+    }));
+
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Search games - Error:', err);
+    res.status(500).json({ error: 'Failed to search games' });
+  }
+});
+
+// Get popular video games
+app.get('/api/games', async (req, res) => {
+  console.log('=== GET POPULAR GAMES ===');
+
+  try {
+    // Get games ordered by rating
+    const response = await fetch(getRawgUrl('/games', {
+      ordering: '-rating',
+      page_size: 20,
+      metacritic: '70,100' // Games with good ratings
+    }));
+    const data = await response.json();
+
+    const results = (data.results || []).map(game => ({
+      id: game.id,
+      title: game.name,
+      year: game.released ? new Date(game.released).getFullYear() : '',
+      poster: game.background_image,
+      rating: game.rating,
+      genres: game.genres?.map(g => g.name).join(', ') || ''
+    }));
+
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Get games - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch games' });
+  }
+});
+
+// Get game details from RAWG API
+app.get('/api/games/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET GAME DETAILS ===', id);
+
+  try {
+    const response = await fetch(getRawgUrl(`/games/${id}`));
+    const game = await response.json();
+
+    if (game.id) {
+      res.json({
+        Response: 'True',
+        id: game.id,
+        title: game.name,
+        year: game.released ? new Date(game.released).getFullYear() : '',
+        poster: game.background_image,
+        description: game.description_raw || game.description || '',
+        rating: game.rating,
+        metacritic: game.metacritic,
+        genres: game.genres?.map(g => g.name).join(', ') || '',
+        platforms: game.platforms?.map(p => p.platform.name).join(', ') || '',
+        developers: game.developers?.map(d => d.name).join(', ') || '',
+        publishers: game.publishers?.map(p => p.name).join(', ') || ''
+      });
+    } else {
+      res.json({ Response: 'False', Error: 'Game not found' });
+    }
+  } catch (err) {
+    console.error('Get game details - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch game details' });
+  }
+});
+
 // Admin - Add movie
 app.post('/api/admin/movies', adminMiddleware, async (req, res) => {
   console.log('=== ADD MOVIE ===');

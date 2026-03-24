@@ -5,7 +5,7 @@ import API_BASE_URL from '../config';
 import './ReviewForm.css';
 
 const categories = ['movies', 'shows', 'songs', 'videogames'];
-const searchableCategories = ['movies', 'shows', 'songs'];
+const searchableCategories = ['movies', 'shows', 'songs', 'videogames'];
 
 function ReviewForm() {
   const { id } = useParams();
@@ -83,13 +83,15 @@ function ReviewForm() {
         endpoint = `${API_BASE_URL}/api/shows/search?query=${encodeURIComponent(query)}`;
       } else if (formData.category === 'songs') {
         endpoint = `${API_BASE_URL}/api/songs/search?query=${encodeURIComponent(query)}`;
+      } else if (formData.category === 'videogames') {
+        endpoint = `${API_BASE_URL}/api/games/search?query=${encodeURIComponent(query)}`;
       }
 
       const res = await fetch(endpoint);
       const data = await res.json();
 
       if (data.Response === 'True') {
-        if (formData.category === 'songs') {
+        if (formData.category === 'songs' || formData.category === 'videogames') {
           setSearchResults(data.results || []);
         } else {
           setSearchResults(data.Search || []);
@@ -132,6 +134,9 @@ function ReviewForm() {
       } else if (formData.category === 'songs') {
         endpoint = `${API_BASE_URL}/api/songs/${item.id}`;
         id = item.id;
+      } else if (formData.category === 'videogames') {
+        endpoint = `${API_BASE_URL}/api/games/${item.id}`;
+        id = item.id;
       }
 
       const res = await fetch(endpoint);
@@ -147,6 +152,18 @@ function ReviewForm() {
           setSelectedItem({
             ...item,
             Title: `${data.title} - ${data.artist}`,
+            Poster: data.poster,
+            Year: data.year
+          });
+        } else if (formData.category === 'videogames') {
+          setFormData({
+            ...formData,
+            title: data.title,
+            description: data.description || ''
+          });
+          setSelectedItem({
+            ...item,
+            Title: data.title,
             Poster: data.poster,
             Year: data.year
           });
@@ -270,11 +287,11 @@ function ReviewForm() {
             </select>
           </div>
 
-          {/* Search box for movies, shows and songs */}
+          {/* Search box for movies, shows, songs and games */}
           {searchableCategories.includes(formData.category) && (
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">
-                Search {formData.category === 'movies' ? 'Movie' : formData.category === 'shows' ? 'TV Show' : 'Album/Song'}
+                Search {formData.category === 'movies' ? 'Movie' : formData.category === 'shows' ? 'TV Show' : formData.category === 'songs' ? 'Album/Song' : 'Game'}
               </label>
               <div className="relative">
                 <input
