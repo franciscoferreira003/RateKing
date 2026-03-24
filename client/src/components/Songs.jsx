@@ -113,7 +113,7 @@ function Songs() {
 
       {/* Albums Grid */}
       {!loading && (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
+        <div className="grid grid-cols-4 gap-4">
           {albums.length > 0 ? (
             albums.map(album => (
               <div
