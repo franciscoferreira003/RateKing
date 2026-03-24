@@ -12,6 +12,7 @@ function Media() {
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [itemDetails, setItemDetails] = useState(null);
+  const [randomLoading, setRandomLoading] = useState(false);
 
   useEffect(() => {
     fetchItems();
@@ -58,6 +59,27 @@ function Media() {
     if (e.key === 'Enter') {
       searchItems();
     }
+  };
+
+  const getRandomMovie = async () => {
+    setRandomLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/movies/random`);
+      const data = await res.json();
+      if (data.Response === 'True') {
+        setSelectedItem({
+          imdbID: data.imdbID,
+          Title: data.Title,
+          Year: data.Year,
+          Poster: data.Poster,
+          imdbRating: data.imdbRating
+        });
+        setItemDetails(data);
+      }
+    } catch (e) {
+      console.error('Failed to get random movie:', e);
+    }
+    setRandomLoading(false);
   };
 
   const handleItemSelect = async (item) => {
@@ -126,6 +148,24 @@ function Media() {
         <button onClick={searchItems} className="btn btn-primary">
           Search
         </button>
+        {activeTab === 'movies' && (
+          <button
+            onClick={getRandomMovie}
+            disabled={randomLoading}
+            className="btn btn-secondary flex items-center gap-2"
+          >
+            {randomLoading ? (
+              <>
+                <span className="animate-spin">🎲</span>
+                Loading...
+              </>
+            ) : (
+              <>
+                🎲 Random
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {loading && (

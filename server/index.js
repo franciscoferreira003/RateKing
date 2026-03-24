@@ -930,6 +930,13 @@ app.get('/api/search', async (req, res) => {
 
 // ============ MOVIE ROUTES ============
 
+// Helper to upgrade poster quality
+const upgradePosterQuality = (poster) => {
+  if (!poster || poster === 'N/A') return null;
+  // Replace low quality with higher resolution
+  return poster.replace('SX300', 'SX700').replace('SX200', 'SX700');
+};
+
 // Search movies from OMDB API
 app.get('/api/movies/search', async (req, res) => {
   const { query } = req.query;
@@ -946,7 +953,12 @@ app.get('/api/movies/search', async (req, res) => {
     console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
 
     if (data.Response === 'True') {
-      res.json({ Response: 'True', Search: data.Search || [] });
+      // Upgrade poster quality
+      const movies = (data.Search || []).map(movie => ({
+        ...movie,
+        Poster: upgradePosterQuality(movie.Poster)
+      }));
+      res.json({ Response: 'True', Search: movies });
     } else {
       res.json({ Response: 'False', Error: data.Error || 'No movies found', Search: [] });
     }
@@ -970,7 +982,12 @@ app.get('/api/shows/search', async (req, res) => {
     console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
 
     if (data.Response === 'True') {
-      res.json({ Response: 'True', Search: data.Search || [] });
+      // Upgrade poster quality
+      const shows = (data.Search || []).map(show => ({
+        ...show,
+        Poster: upgradePosterQuality(show.Poster)
+      }));
+      res.json({ Response: 'True', Search: shows });
     } else {
       res.json({ Response: 'False', Error: data.Error || 'No shows found', Search: [] });
     }
@@ -990,7 +1007,12 @@ app.get('/api/movies/:id', async (req, res) => {
     const data = await response.json();
 
     if (data.Response === 'True') {
-      res.json({ Response: 'True', ...data });
+      // Upgrade poster quality
+      const movie = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...movie });
     } else {
       res.json({ Response: 'False', Error: data.Error || 'Movie not found' });
     }
@@ -1018,7 +1040,10 @@ app.get('/api/movies', async (req, res) => {
           for (const movie of data.Search) {
             if (!seenIds.has(movie.imdbID)) {
               seenIds.add(movie.imdbID);
-              allMovies.push(movie);
+              allMovies.push({
+                ...movie,
+                Poster: upgradePosterQuality(movie.Poster)
+              });
             }
           }
         }
@@ -1032,6 +1057,88 @@ app.get('/api/movies', async (req, res) => {
   } catch (err) {
     console.error('Get movies - Error:', err);
     res.status(500).json({ error: 'Failed to fetch movies' });
+  }
+});
+
+// Get random movie recommendation
+app.get('/api/movies/random', async (req, res) => {
+  console.log('=== GET RANDOM MOVIE ===');
+
+  try {
+    // List of popular movies to randomly pick from
+    const randomMovies = [
+      'tt0111161', // The Shawshank Redemption
+      'tt0468569', // The Dark Knight
+      'tt1375666', // Inception
+      'tt0137523', // Fight Club
+      'tt0110912', // Pulp Fiction
+      'tt0109830', // Forrest Gump
+      'tt0068646', // The Godfather
+      'tt0167260', // The Lord of the Rings: The Return of the King
+      'tt0120737', // The Lord of the Rings: The Fellowship of the Ring
+      'tt0108052', // Schindler's List
+      'tt0080684', // Star Wars: Episode V - The Empire Strikes Back
+      'tt0816692', // Interstellar
+      'tt0133093', // The Matrix
+      'tt0071562', // The Godfather: Part II
+      'tt0050083', // Psycho
+      'tt0038650', // It's a Wonderful Life
+      'tt0167261', // The Lord of the Rings: The Two Towers
+      'tt0048473', // Rear Window
+      'tt0056058', // To Kill a Mockingbird
+      'tt0317248', // City of God
+      'tt0076759', // Star Wars: Episode IV - A New Hope
+      'tt0118799', // Saving Private Ryan
+      'tt0057012', // Dr. Strangelove
+      'tt0245429', // Spirited Away
+      'tt0027977', // Modern Times
+      'tt0054215', // The Apartment
+      'tt0017136', // Metropolis
+      'tt0110607', // The Usual Suspects
+      'tt0034583', // Casablanca
+      'tt0021749', // City Lights
+      'tt0053604', // La Dolce Vita
+      'tt0088763', // Back to the Future
+      'tt0095765', // Braveheart
+      'tt0099685', // American Beauty
+      'tt0102926', // The Silence of the Lambs
+      'tt0073486', // Jaws
+      'tt0084787', // The Thing
+      'tt0110413', // Léon: The Professional
+      'tt0091763', // The Princess Bride
+      'tt0083658', // Blade Runner
+      'tt0180093', // Requiem for a Dream
+      'tt0253474', // The Pianist
+      'tt0040522', // Bicycle Thieves
+      'tt0078788', // Apocalypse Now
+      'tt0097576', // Indiana Jones and the Last Crusade
+      'tt1853728', // Django Unchained
+      'tt0848228', // The Avengers
+      'tt4154796', // Avengers: Endgame
+      'tt4154756', // Avengers: Infinity War
+      'tt3501632', // Spider-Man: No Way Home
+      'tt7286456', // Joker
+      'tt6751668', // Parasite
+    ];
+
+    // Pick a random movie ID
+    const randomId = randomMovies[Math.floor(Math.random() * randomMovies.length)];
+
+    const response = await fetch(`${OMDB_URL}?i=${randomId}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+
+    if (data.Response === 'True') {
+      const movie = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...movie });
+    } else {
+      res.json({ Response: 'False', Error: 'Could not get random movie' });
+    }
+  } catch (err) {
+    console.error('Get random movie - Error:', err);
+    res.status(500).json({ error: 'Failed to get random movie' });
   }
 });
 
@@ -1053,7 +1160,10 @@ app.get('/api/shows', async (req, res) => {
           for (const show of data.Search) {
             if (!seenIds.has(show.imdbID)) {
               seenIds.add(show.imdbID);
-              allShows.push(show);
+              allShows.push({
+                ...show,
+                Poster: upgradePosterQuality(show.Poster)
+              });
             }
           }
         }
@@ -1080,7 +1190,11 @@ app.get('/api/shows/:id', async (req, res) => {
     const data = await response.json();
 
     if (data.Response === 'True') {
-      res.json({ Response: 'True', ...data });
+      const show = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...show });
     } else {
       res.json({ Response: 'False', Error: data.Error || 'Show not found' });
     }
