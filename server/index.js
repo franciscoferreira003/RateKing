@@ -1052,12 +1052,13 @@ app.get('/api/songs/search', async (req, res) => {
     console.log('iTunes Response:', data.resultCount, 'results');
 
     // Transform iTunes results to match our format
+    // Replace 100x100 with higher resolution (600x600 for better quality)
     const results = (data.results || []).map(item => ({
       id: item.collectionId || item.trackId,
       title: item.collectionName || item.trackName,
       artist: item.artistName,
       year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
-      poster: item.artworkUrl100,
+      poster: item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : null,
       genre: item.primaryGenreName,
       type: item.collectionType || 'Album'
     }));
@@ -1093,7 +1094,7 @@ app.get('/api/songs', async (req, res) => {
                 title: item.collectionName,
                 artist: item.artistName,
                 year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
-                poster: item.artworkUrl100,
+                poster: item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : null,
                 genre: item.primaryGenreName
               });
             }
@@ -1135,7 +1136,7 @@ app.get('/api/songs/:id', async (req, res) => {
         title: album.collectionName,
         artist: album.artistName,
         year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
-        poster: album.artworkUrl100,
+        poster: album.artworkUrl100 ? album.artworkUrl100.replace('100x100', '600x600') : null,
         genre: album.primaryGenreName,
         tracks: tracks.slice(0, 10) // First 10 tracks
       });
