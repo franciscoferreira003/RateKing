@@ -106,7 +106,7 @@ function Songs() {
 
       {/* Albums Grid */}
       {!loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-2">
           {albums.length > 0 ? (
             albums.map(album => (
               <div
@@ -116,16 +116,14 @@ function Songs() {
               >
                 <div className="relative overflow-hidden">
                   <img
-                    src={album.poster || 'https://via.placeholder.com/200x200?text=No+Cover'}
+                    src={album.poster || 'https://via.placeholder.com/100x100?text=No+Cover'}
                     alt={album.title}
-                    className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-110"
+                    className="w-full aspect-square object-cover transition-transform duration-300 group-hover:scale-105"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
-                <div className="p-3">
-                  <h4 className="text-white font-semibold text-sm truncate">{album.title}</h4>
+                <div className="p-2">
+                  <h4 className="text-white font-medium text-xs truncate">{album.title}</h4>
                   <p className="text-white/50 text-xs truncate">{album.artist}</p>
-                  <p className="text-white/30 text-xs mt-1">{album.year}</p>
                 </div>
               </div>
             ))
@@ -145,60 +143,58 @@ function Songs() {
           onClick={closeModal}
         >
           <div
-            className="glass max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-3xl gold-glow"
+            className="glass max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-2xl gold-glow"
             onClick={(e) => e.stopPropagation()}
           >
             <button
-              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-xl transition-all hover:rotate-90 duration-300"
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white text-lg transition-all hover:rotate-90 duration-300"
               onClick={closeModal}
             >
               ×
             </button>
 
-            <div className="p-6 md:p-8 flex flex-col md:flex-row gap-6">
+            <div className="p-5 flex flex-col items-center text-center">
               <img
-                src={selectedAlbum.poster || 'https://via.placeholder.com/280x280?text=No+Cover'}
+                src={selectedAlbum.poster || 'https://via.placeholder.com/200x200?text=No+Cover'}
                 alt={selectedAlbum.title}
-                className="w-48 h-48 md:w-64 md:h-64 rounded-2xl shadow-2xl mx-auto md:mx-0 object-cover"
+                className="w-40 h-40 rounded-xl shadow-lg mb-4"
               />
 
-              <div className="flex-1">
-                <h3 className="text-xl md:text-2xl font-bold text-white mb-2">
-                  {selectedAlbum.title}
-                </h3>
-                <p className="text-yellow-400 text-lg mb-2">{selectedAlbum.artist}</p>
-                <p className="text-white/50 text-sm mb-4">{selectedAlbum.year}</p>
+              <h3 className="text-lg font-bold text-white mb-1">
+                {selectedAlbum.title}
+              </h3>
+              <p className="text-yellow-400 mb-1">{selectedAlbum.artist}</p>
+              <p className="text-white/50 text-sm mb-3">{selectedAlbum.year}</p>
 
-                {albumDetails?.genre && (
-                  <span className="inline-block px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-sm mb-4">
-                    {albumDetails.genre}
-                  </span>
-                )}
+              {albumDetails?.genre && (
+                <span className="px-3 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs mb-3">
+                  {albumDetails.genre}
+                </span>
+              )}
 
-                {albumDetails?.tracks && albumDetails.tracks.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-white/70 text-sm mb-2">Tracks:</p>
-                    <ul className="text-white/50 text-sm space-y-1 max-h-32 overflow-y-auto">
-                      {albumDetails.tracks.slice(0, 10).map((track, i) => (
-                        <li key={track.id || i}>{i + 1}. {track.title}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              {albumDetails?.tracks && albumDetails.tracks.length > 0 && (
+                <div className="w-full mb-3 text-left">
+                  <p className="text-white/70 text-xs mb-1">Tracks:</p>
+                  <ul className="text-white/50 text-xs space-y-0.5 max-h-24 overflow-y-auto">
+                    {albumDetails.tracks.slice(0, 10).map((track, i) => (
+                      <li key={track.id || i}>{i + 1}. {track.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-                {user ? (
-                  <Link
-                    to={`/category/songs/new?title=${encodeURIComponent(`${selectedAlbum.title} - ${selectedAlbum.artist}`)}&description=${encodeURIComponent(albumDetails?.genre || '')}`}
-                    className="btn btn-primary mt-4 inline-flex"
-                  >
-                    ✍️ Write a Review
-                  </Link>
-                ) : (
-                  <Link to="/login" className="btn btn-primary mt-4 inline-flex">
-                    Login to Review
-                  </Link>
-                )}
-              </div>
+              {user ? (
+                <Link
+                  to={`/category/songs/new?title=${encodeURIComponent(`${selectedAlbum.title} - ${selectedAlbum.artist}`)}&description=${encodeURIComponent(albumDetails?.genre || '')}`}
+                  className="btn btn-primary text-sm py-2 px-4"
+                >
+                  ✍️ Write a Review
+                </Link>
+              ) : (
+                <Link to="/login" className="btn btn-primary text-sm py-2 px-4">
+                  Login to Review
+                </Link>
+              )}
             </div>
           </div>
         </div>
