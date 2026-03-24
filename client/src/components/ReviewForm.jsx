@@ -5,7 +5,7 @@ import API_BASE_URL from '../config';
 import './ReviewForm.css';
 
 const categories = ['movies', 'shows', 'songs', 'videogames'];
-const searchableCategories = ['movies', 'shows'];
+const searchableCategories = ['movies', 'shows', 'songs'];
 
 function ReviewForm() {
   const { id } = useParams();
@@ -76,15 +76,25 @@ function ReviewForm() {
 
     setSearching(true);
     try {
-      const endpoint = formData.category === 'movies'
-        ? `${API_BASE_URL}/api/movies/search?query=${encodeURIComponent(query)}`
-        : `${API_BASE_URL}/api/shows/search?query=${encodeURIComponent(query)}`;
+      let endpoint;
+      if (formData.category === 'movies') {
+        endpoint = `${API_BASE_URL}/api/movies/search?query=${encodeURIComponent(query)}`;
+      } else if (formData.category === 'shows') {
+        endpoint = `${API_BASE_URL}/api/shows/search?query=${encodeURIComponent(query)}`;
+      } else if (formData.category === 'songs') {
+        endpoint = `${API_BASE_URL}/api/songs/search?query=${encodeURIComponent(query)}`;
+      }
 
       const res = await fetch(endpoint);
       const data = await res.json();
 
       if (data.Response === 'True') {
-        setSearchResults(data.Search || []);
+        if (formData.category === 'songs') {
+          // iTunes returns 'results' instead of 'Search'
+          setSearchResults(data.results || []);
+        } else {
+          setSearchResults(data.Search || []);
+        }
       } else {
         setSearchResults([]);
       }
@@ -108,20 +118,69 @@ function ReviewForm() {
 
   const handleItemSelect = async (item) => {
     setSelectedItem(item);
-    setSearchQuery(item.Title);
+    // Use different property names for iTunes vs OMDB
+    setSearchQuery(item.Title || item.title || '');
     setSearchResults([]);
 
     // Fetch full details
     try {
-      const endpoint = formData.category === 'movies'
-        ? `${API_BASE_URL}/api/movies/${item.imdbID}`
-        : `${API_BASE_URL}/api/shows/${item.imdbID}`;
+      let endpoint;
+      let id;
+
+      if (formData.category === 'movies') {
+        endpoint = `${API_BASE_URL}/api/movies/${item.imdbID}`;
+        id = item.imdbID;
+      } else if (formData.category === 'shows') {
+        endpoint = `${API_BASE_URL}/api/shows/${item.imdbID}`;
+        id = item.imdbID;
+      } else if (formData.category === 'songs') {
+        endpoint = `${API_BASE_URL}/api/songs/${item.id}`;
+        id = item.id;
+      }
 
       const res = await fetch(endpoint);
       const data = await res.json();
 
       if (data.Response === 'True') {
+        if (formData.category === 'songs') {
+          // iTunes format
+          setFormData({
+            ...formData,
+            title: `${data.title} - ${data.artist}`,
+            description: data.genre || ''
+          });
+          setSelectedItem({
+            ...item,
+            Title: `${data.title} - ${data.artist}`,
+            Poster: data.poster,
+            Year: data.year
+          });
+        } else {
+          // OMDB format
+          setFormData({
+            ...formData,
+            title: data.Title,
+            description: data.Plot || ''
+          });
+        }
+      }
+    } catch (e) {
+      // Fallback
+      if (formData.category === 'songs') {
         setFormData({
+          ...formData,
+          title: item.title || item.Title || '',
+          description: item.artist ? `Album by ${item.artist}` : ''
+        });
+      } else {
+        setFormData({
+          ...formData,
+          title: item.Title || item.title || '',
+          description: ''
+        });
+      }
+    }
+  };
           ...formData,
           title: data.Title,
           description: data.Plot || ''
@@ -231,11 +290,11 @@ function ReviewForm() {
             </select>
           </div>
 
-          {/* Search box for movies and shows */}
+          {/* Search box for movies, shows and songs */}
           {searchableCategories.includes(formData.category) && (
             <div>
               <label className="block text-sm font-medium text-white/80 mb-2">
-                Search {formData.category === 'movies' ? 'Movie' : 'TV Show'}
+                Search {formData.category === 'movies' ? 'Movie' : formData.category === 'shows' ? 'TV Show' : 'Album/Song'}
               </label>
               <div className="relative">
                 <input
@@ -259,25 +318,35 @@ function ReviewForm() {
                 {/* Search results dropdown */}
                 {searchResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/20 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
-                    {searchResults.map(item => (
-                      <div
-                        key={item.imdbID}
-                        className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition-colors"
-                        onClick={() => handleItemSelect(item)}
-                      >
-                        {item.Poster && item.Poster !== 'N/A' && (
-                          <img
-                            src={item.Poster}
-                            alt={item.Title}
-                            className="w-10 h-14 object-cover rounded"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium truncate">{item.Title}</p>
-                          <p className="text-white/50 text-sm">{item.Year}</p>
+                    {searchResults.map(item => {
+                      // Handle both OMDB (imdbID, Title, Poster, Year) and iTunes (id, title, poster, year) formats
+                      const id = item.imdbID || item.id;
+                      const title = item.Title || item.title;
+                      const poster = item.Poster || item.poster;
+                      const year = item.Year || item.year;
+                      const artist = item.artist;
+                      const subtitle = artist ? `${artist} (${year})` : year;
+
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer transition-colors"
+                          onClick={() => handleItemSelect(item)}
+                        >
+                          {poster && poster !== 'N/A' && (
+                            <img
+                              src={poster}
+                              alt={title}
+                              className="w-10 h-14 object-cover rounded"
+                            />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-medium truncate">{title}</p>
+                            <p className="text-white/50 text-sm truncate">{subtitle}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -290,19 +359,28 @@ function ReviewForm() {
 
               {selectedItem && (
                 <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-center gap-3">
-                  {selectedItem.Poster && selectedItem.Poster !== 'N/A' && (
+                  {(selectedItem.Poster || selectedItem.poster) && (selectedItem.Poster || selectedItem.poster) !== 'N/A' && (
                     <img
-                      src={selectedItem.Poster}
-                      alt={selectedItem.Title}
+                      src={selectedItem.Poster || selectedItem.poster}
+                      alt={selectedItem.Title || selectedItem.title}
                       className="w-10 h-14 object-cover rounded"
                     />
                   )}
                   <div className="flex-1">
-                    <p className="text-white font-medium">{selectedItem.Title}</p>
-                    <p className="text-white/50 text-sm">{selectedItem.Year}</p>
+                    <p className="text-white font-medium">{selectedItem.Title || selectedItem.title}</p>
+                    <p className="text-white/50 text-sm">{selectedItem.artist ? `${selectedItem.artist} (${selectedItem.Year || selectedItem.year})` : (selectedItem.Year || selectedItem.year)}</p>
                   </div>
                   <button
                     type="button"
+                    onClick={clearSelection}
+                    className="text-white/50 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
                     onClick={clearSelection}
                     className="text-white/50 hover:text-white"
                   >

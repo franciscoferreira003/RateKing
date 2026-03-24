@@ -1031,6 +1031,123 @@ app.get('/api/shows/:id', async (req, res) => {
   }
 });
 
+// ============ ITUNES API FOR SONGS/ALBUMS ============
+
+const ITUNES_URL = 'https://itunes.apple.com';
+
+// Search songs/albums from iTunes API
+app.get('/api/songs/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH SONGS (iTUNES) ===', query);
+
+  if (!query || !query.trim()) {
+    return res.json({ results: [] });
+  }
+
+  try {
+    const searchUrl = `${ITUNES_URL}/search?term=${encodeURIComponent(query)}&media=music&entity=album&limit=20`;
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    console.log('iTunes Response:', data.resultCount, 'results');
+
+    // Transform iTunes results to match our format
+    const results = (data.results || []).map(item => ({
+      id: item.collectionId || item.trackId,
+      title: item.collectionName || item.trackName,
+      artist: item.artistName,
+      year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
+      poster: item.artworkUrl100,
+      genre: item.primaryGenreName,
+      type: item.collectionType || 'Album'
+    }));
+
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Search songs - Error:', err);
+    res.status(500).json({ error: 'Failed to search songs' });
+  }
+});
+
+// Get popular songs/albums
+app.get('/api/songs', async (req, res) => {
+  console.log('=== GET POPULAR SONGS ===');
+
+  try {
+    // Search for popular artists to get varied results
+    const popularArtists = ['Taylor Swift', 'Drake', 'Ed Sheeran', 'Beyonce', 'The Weeknd'];
+    const allAlbums = [];
+    const seenIds = new Set();
+
+    for (const artist of popularArtists) {
+      try {
+        const response = await fetch(`${ITUNES_URL}/search?term=${encodeURIComponent(artist)}&media=music&entity=album&limit=5`);
+        const data = await response.json();
+
+        if (data.results) {
+          for (const item of data.results) {
+            if (!seenIds.has(item.collectionId)) {
+              seenIds.add(item.collectionId);
+              allAlbums.push({
+                id: item.collectionId,
+                title: item.collectionName,
+                artist: item.artistName,
+                year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
+                poster: item.artworkUrl100,
+                genre: item.primaryGenreName
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error fetching ${artist}:`, e.message);
+      }
+    }
+
+    console.log('Albums found from iTunes:', allAlbums.length);
+    res.json({ Response: 'True', results: allAlbums });
+  } catch (err) {
+    console.error('Get songs - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch songs' });
+  }
+});
+
+// Get album/song details from iTunes API
+app.get('/api/songs/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET SONG DETAILS ===', id);
+
+  try {
+    const response = await fetch(`${ITUNES_URL}/lookup?id=${id}&entity=song`);
+    const data = await response.json();
+
+    if (data.results && data.results.length > 0) {
+      const album = data.results[0];
+      const tracks = data.results.slice(1).map(track => ({
+        id: track.trackId,
+        title: track.trackName,
+        duration: track.trackTimeMillis
+      }));
+
+      res.json({
+        Response: 'True',
+        id: album.collectionId,
+        title: album.collectionName,
+        artist: album.artistName,
+        year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
+        poster: album.artworkUrl100,
+        genre: album.primaryGenreName,
+        tracks: tracks.slice(0, 10) // First 10 tracks
+      });
+    } else {
+      res.json({ Response: 'False', Error: 'Album not found' });
+    }
+  } catch (err) {
+    console.error('Get song details - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch song details' });
+  }
+});
+
 // Admin - Add movie
 app.post('/api/admin/movies', adminMiddleware, async (req, res) => {
   console.log('=== ADD MOVIE ===');
