@@ -470,6 +470,65 @@ app.post('/api/users/me/avatar', authMiddleware, upload.single('avatar'), async 
   }
 });
 
+// Update username
+app.put('/api/users/me/username', authMiddleware, async (req, res) => {
+  console.log('=== UPDATE USERNAME ===');
+  const { username } = req.body;
+
+  if (!username || username.trim().length < 3) {
+    return res.status(400).json({ error: 'Username must be at least 3 characters' });
+  }
+
+  try {
+    if (USE_DATABASE) {
+      // Check if username is already taken
+      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username.trim(), req.userId]);
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+
+      const result = await pool.query(
+        'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [username.trim(), req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Check if username is already taken
+      const existingUser = users.find(u => u.username === username.trim() && u.id !== req.userId);
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+
+      users[userIndex].username = username.trim();
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: users[userIndex].profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Update username - Error:', err);
+    res.status(500).json({ error: 'Failed to update username' });
+  }
+});
+
 // ============ ADMIN USER ROUTES ============
 
 app.get('/api/admin/users', adminMiddleware, async (req, res) => {

@@ -14,6 +14,8 @@ function Profile() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [savingUsername, setSavingUsername] = useState(false);
 
   useEffect(() => {
     fetchProfile();
@@ -87,6 +89,57 @@ function Profile() {
       setError('Failed to upload image');
     }
     setUploading(false);
+  };
+
+  const handleUsernameUpdate = async () => {
+    if (!newUsername.trim()) {
+      setError('Username cannot be empty');
+      return;
+    }
+
+    if (newUsername.length < 3) {
+      setError('Username must be at least 3 characters');
+      return;
+    }
+
+    setSavingUsername(true);
+    setError('');
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/api/users/me/username`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ username: newUsername })
+      });
+
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setProfile(prev => ({
+          ...prev,
+          user: { ...prev.user, username: updatedUser.username }
+        }));
+        setEditing(false);
+        if (updateUser) {
+          await updateUser();
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to update username');
+      }
+    } catch (e) {
+      setError('Failed to update username');
+    }
+    setSavingUsername(false);
+  };
+
+  const startEditing = () => {
+    setEditing(true);
+    setNewUsername(profile?.user?.username || '');
+    setError('');
   };
 
   const getCategoryEmoji = (category) => {
@@ -166,7 +219,7 @@ function Profile() {
           {/* Edit Button */}
           {isOwnProfile && !editing && (
             <button
-              onClick={() => setEditing(true)}
+              onClick={startEditing}
               className="btn btn-secondary"
             >
               ✏️ Edit Profile
@@ -176,9 +229,35 @@ function Profile() {
 
         {/* Edit Form */}
         {editing && isOwnProfile && (
-          <div className="mt-6 p-4 bg-white/5 rounded-xl">
-            <h3 className="text-white font-semibold mb-4">Change Profile Picture</h3>
-            <div className="flex flex-col gap-4">
+          <div className="mt-6 p-4 bg-white/5 rounded-xl space-y-4">
+            <h3 className="text-white font-semibold mb-2">Edit Profile</h3>
+
+            {/* Username Field */}
+            <div>
+              <label className="block text-sm text-white/70 mb-1">Username</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  className="input flex-1"
+                  placeholder="Enter new username"
+                  minLength={3}
+                  maxLength={30}
+                />
+                <button
+                  onClick={handleUsernameUpdate}
+                  disabled={savingUsername || newUsername === profile.user.username}
+                  className="btn btn-primary"
+                >
+                  {savingUsername ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-white/10 pt-4">
+              <h4 className="text-white/70 text-sm mb-3">Change Profile Picture</h4>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -189,7 +268,7 @@ function Profile() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="btn btn-primary flex items-center justify-center gap-2"
+                className="btn btn-secondary flex items-center justify-center gap-2 w-full"
               >
                 {uploading ? (
                   <>
@@ -202,16 +281,18 @@ function Profile() {
                   </>
                 )}
               </button>
-              <p className="text-white/50 text-xs text-center">
+              <p className="text-white/50 text-xs text-center mt-2">
                 Max 5MB. Supported formats: JPEG, PNG, GIF, WebP
               </p>
-              {error && (
-                <p className="text-red-400 text-sm text-center">{error}</p>
-              )}
-              <button onClick={() => setEditing(false)} className="btn btn-secondary">
-                Cancel
-              </button>
             </div>
+
+            {error && (
+              <p className="text-red-400 text-sm text-center">{error}</p>
+            )}
+
+            <button onClick={() => setEditing(false)} className="btn btn-secondary w-full">
+              Done
+            </button>
           </div>
         )}
       </div>

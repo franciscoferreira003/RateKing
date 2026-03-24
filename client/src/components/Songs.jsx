@@ -146,11 +146,11 @@ function Songs() {
       {/* Album Detail Modal */}
       {selectedAlbum && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={closeModal}
         >
           <div
-            className="glass max-w-md w-full max-h-[85vh] overflow-y-auto rounded-2xl"
+            className="bg-slate-900/95 max-w-md w-full max-h-[85vh] overflow-y-auto rounded-2xl border border-white/10 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
