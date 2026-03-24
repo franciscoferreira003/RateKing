@@ -1325,14 +1325,15 @@ app.get('/api/songs/:id', async (req, res) => {
 // ============ RAWG API FOR VIDEO GAMES ============
 
 const RAWG_URL = 'https://api.rawg.io/api';
-const RAWG_API_KEY = process.env.RAWG_API_KEY || ''; // Optional for basic usage
+const RAWG_API_KEY = process.env.RAWG_API_KEY || '';
 
 // Helper to add API key to RAWG requests
 const getRawgUrl = (endpoint, params = {}) => {
-  const url = new URL(`${RAWG_URL}${endpoint}`);
-  if (RAWG_API_KEY) {
-    url.searchParams.append('key', RAWG_API_KEY);
+  if (!RAWG_API_KEY) {
+    return null; // Will return error response
   }
+  const url = new URL(`${RAWG_URL}${endpoint}`);
+  url.searchParams.append('key', RAWG_API_KEY);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       url.searchParams.append(key, value);
@@ -1341,17 +1342,33 @@ const getRawgUrl = (endpoint, params = {}) => {
   return url.toString();
 };
 
+// Check if RAWG API key is configured
+app.get('/api/games/status', (req, res) => {
+  res.json({
+    configured: !!RAWG_API_KEY,
+    message: RAWG_API_KEY ? 'RAWG API key configured' : 'RAWG API key not configured. Add RAWG_API_KEY to environment variables.'
+  });
+});
+
 // Search video games from RAWG API
 app.get('/api/games/search', async (req, res) => {
   const { query } = req.query;
   console.log('=== SEARCH GAMES (RAWG) ===', query);
+
+  if (!RAWG_API_KEY) {
+    return res.status(503).json({
+      Response: 'False',
+      Error: 'RAWG API key not configured. Please add RAWG_API_KEY to your environment variables. Get a free key at https://rawg.io/apidocs'
+    });
+  }
 
   if (!query || !query.trim()) {
     return res.json({ results: [] });
   }
 
   try {
-    const response = await fetch(getRawgUrl('/games', { search: query, page_size: 20 }));
+    const url = getRawgUrl('/games', { search: query, page_size: 20 });
+    const response = await fetch(url);
     const data = await response.json();
 
     const results = (data.results || []).map(game => ({
@@ -1374,13 +1391,22 @@ app.get('/api/games/search', async (req, res) => {
 app.get('/api/games', async (req, res) => {
   console.log('=== GET POPULAR GAMES ===');
 
+  if (!RAWG_API_KEY) {
+    return res.status(503).json({
+      Response: 'False',
+      Error: 'RAWG API key not configured. Please add RAWG_API_KEY to your environment variables. Get a free key at https://rawg.io/apidocs',
+      needsApiKey: true
+    });
+  }
+
   try {
     // Get games ordered by rating
-    const response = await fetch(getRawgUrl('/games', {
+    const url = getRawgUrl('/games', {
       ordering: '-rating',
       page_size: 20,
-      metacritic: '70,100' // Games with good ratings
-    }));
+      metacritic: '70,100'
+    });
+    const response = await fetch(url);
     const data = await response.json();
 
     const results = (data.results || []).map(game => ({
@@ -1404,8 +1430,16 @@ app.get('/api/games/:id', async (req, res) => {
   const { id } = req.params;
   console.log('=== GET GAME DETAILS ===', id);
 
+  if (!RAWG_API_KEY) {
+    return res.status(503).json({
+      Response: 'False',
+      Error: 'RAWG API key not configured'
+    });
+  }
+
   try {
-    const response = await fetch(getRawgUrl(`/games/${id}`));
+    const url = getRawgUrl(`/games/${id}`);
+    const response = await fetch(url);
     const game = await response.json();
 
     if (game.id) {

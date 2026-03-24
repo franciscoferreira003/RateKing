@@ -11,6 +11,7 @@ function VideoGames() {
   const [loading, setLoading] = useState(true);
   const [selectedGame, setSelectedGame] = useState(null);
   const [gameDetails, setGameDetails] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchGames();
@@ -18,14 +19,20 @@ function VideoGames() {
 
   const fetchGames = async () => {
     setLoading(true);
+    setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/api/games`);
       const data = await res.json();
       if (data.Response === 'True') {
         setGames(data.results || []);
+      } else if (data.needsApiKey) {
+        setError('RAWG API key not configured. Please add RAWG_API_KEY to your environment variables.');
+      } else {
+        setError(data.Error || 'Failed to load games');
       }
     } catch (e) {
       console.error('Failed to fetch games:', e);
+      setError('Failed to load games');
     }
     setLoading(false);
   };
@@ -36,6 +43,7 @@ function VideoGames() {
       return;
     }
     setLoading(true);
+    setError('');
     try {
       const res = await fetch(`${API_BASE_URL}/api/games/search?query=${encodeURIComponent(searchQuery)}`);
       const data = await res.json();
@@ -43,9 +51,13 @@ function VideoGames() {
         setGames(data.results || []);
       } else {
         setGames([]);
+        if (data.Error) {
+          setError(data.Error);
+        }
       }
     } catch (e) {
       console.error('Failed to search games:', e);
+      setError('Failed to search games');
     }
     setLoading(false);
   };
@@ -104,8 +116,23 @@ function VideoGames() {
         </div>
       )}
 
+      {error && !loading && (
+        <div className="text-center py-12">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-6 py-4 rounded-xl max-w-xl mx-auto">
+            <p className="font-semibold mb-2">⚠️ Games Unavailable</p>
+            <p className="text-sm">{error}</p>
+            <p className="text-xs mt-2 text-white/50">
+              Get a free API key at{' '}
+              <a href="https://rawg.io/apidocs" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">
+                rawg.io/apidocs
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Games Grid */}
-      {!loading && (
+      {!loading && !error && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           {games.length > 0 ? (
             games.map(game => (
