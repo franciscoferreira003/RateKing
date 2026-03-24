@@ -90,7 +90,6 @@ function ReviewForm() {
 
       if (data.Response === 'True') {
         if (formData.category === 'songs') {
-          // iTunes returns 'results' instead of 'Search'
           setSearchResults(data.results || []);
         } else {
           setSearchResults(data.Search || []);
@@ -109,7 +108,6 @@ function ReviewForm() {
     const query = e.target.value;
     setSearchQuery(query);
 
-    // Debounce search
     clearTimeout(window.searchTimeout);
     window.searchTimeout = setTimeout(() => {
       searchItems(query);
@@ -118,11 +116,9 @@ function ReviewForm() {
 
   const handleItemSelect = async (item) => {
     setSelectedItem(item);
-    // Use different property names for iTunes vs OMDB
     setSearchQuery(item.Title || item.title || '');
     setSearchResults([]);
 
-    // Fetch full details
     try {
       let endpoint;
       let id;
@@ -143,7 +139,6 @@ function ReviewForm() {
 
       if (data.Response === 'True') {
         if (formData.category === 'songs') {
-          // iTunes format
           setFormData({
             ...formData,
             title: `${data.title} - ${data.artist}`,
@@ -156,7 +151,6 @@ function ReviewForm() {
             Year: data.year
           });
         } else {
-          // OMDB format
           setFormData({
             ...formData,
             title: data.Title,
@@ -165,7 +159,6 @@ function ReviewForm() {
         }
       }
     } catch (e) {
-      // Fallback
       if (formData.category === 'songs') {
         setFormData({
           ...formData,
@@ -179,19 +172,6 @@ function ReviewForm() {
           description: ''
         });
       }
-    }
-  };
-          ...formData,
-          title: data.Title,
-          description: data.Plot || ''
-        });
-      }
-    } catch (e) {
-      setFormData({
-        ...formData,
-        title: item.Title,
-        description: ''
-      });
     }
   };
 
@@ -319,7 +299,6 @@ function ReviewForm() {
                 {searchResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-white/20 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
                     {searchResults.map(item => {
-                      // Handle both OMDB (imdbID, Title, Poster, Year) and iTunes (id, title, poster, year) formats
                       const id = item.imdbID || item.id;
                       const title = item.Title || item.title;
                       const poster = item.Poster || item.poster;
@@ -372,15 +351,6 @@ function ReviewForm() {
                   </div>
                   <button
                     type="button"
-                    onClick={clearSelection}
-                    className="text-white/50 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
                     onClick={clearSelection}
                     className="text-white/50 hover:text-white"
                   >
