@@ -1,0 +1,2351 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const { pool, initializeDatabase, generateId, USE_DATABASE, USERS_FILE, REVIEWS_FILE, MOVIES_FILE, WATCHLISTS_FILE, LISTS_FILE, EPISODES_FILE } = require('./db');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const OMDB_API_KEY = process.env.OMDB_API_KEY || ''; // OMDB API Key — set in .env
+const OMDB_URL = 'http://www.omdbapi.com/';
+
+// TMDb for recent movies/shows (get a free key at https://www.themoviedb.org/settings/api)
+const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+const TMDB_URL = 'https://api.themoviedb.org/3';
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w500';
+
+// Apple Marketing Tools RSS for recent album releases (no key required)
+const ITUNES_RSS_URL = 'https://rss.applemarketingtools.com/api/v2/us/music/new-releases/25/feed.json';
+
+// Configure multer for in-memory file uploads (we'll store as base64 in DB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit (base64 will be ~33% larger)
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+console.log('=== SERVER STARTING ===');
+console.log('PORT:', PORT);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('USE_DATABASE:', USE_DATABASE);
+
+app.use(cors());
+app.use(bodyParser.json());
+
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
+// Helper functions for JSON storage
+function readJsonFile(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function writeJsonFile(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+// Helper to transform database rows to camelCase
+function transformReview(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    rating: row.rating,
+    description: row.description,
+    category: row.category,
+    userId: row.user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// Auth middleware
+const authMiddleware = async (req, res, next) => {
+  console.log('Auth middleware - checking token');
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    console.log('Auth middleware - No token provided');
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.userId;
+    console.log('Auth middleware - Token valid for user:', decoded.userId);
+    next();
+  } catch (err) {
+    console.log('Auth middleware - Invalid token:', err.message);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Admin middleware
+const adminMiddleware = async (req, res, next) => {
+  console.log('Admin middleware - checking admin rights');
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) {
+    console.log('Admin middleware - No token provided');
+    return res.status(401).json({ error: 'No token provided' });
+  }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId]);
+      const user = result.rows[0];
+      if (!user || !user.is_admin) {
+        console.log('Admin middleware - User not admin:', decoded.userId);
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.id === decoded.userId);
+      if (!user || !user.isAdmin) {
+        console.log('Admin middleware - User not admin:', decoded.userId);
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+    }
+
+    req.userId = decoded.userId;
+    req.isAdmin = true;
+    console.log('Admin middleware - Admin access granted for user:', decoded.userId);
+    next();
+  } catch (err) {
+    console.log('Admin middleware - Error:', err.message);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// ============ AUTH ROUTES ============
+
+app.post('/api/auth/register', async (req, res) => {
+  console.log('=== REGISTER REQUEST ===');
+  console.log('Body:', { ...req.body, password: '[HIDDEN]' });
+
+  try {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      console.log('Register - Missing fields');
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (USE_DATABASE) {
+      console.log('Register - Checking if email exists:', email);
+      const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (existingUser.rows.length > 0) {
+        console.log('Register - Email already registered');
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+
+      console.log('Register - Hashing password');
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const id = generateId();
+
+      console.log('Register - Creating user with id:', id);
+      const result = await pool.query(
+        'INSERT INTO users (id, username, email, password, is_admin, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+        [id, username, email, hashedPassword, false, new Date()]
+      );
+
+      const user = result.rows[0];
+      console.log('Register - User created successfully:', user.id);
+
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      res.status(201).json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin } });
+    } else {
+      // JSON storage
+      const users = readJsonFile(USERS_FILE) || [];
+      if (users.find(u => u.email === email)) {
+        console.log('Register - Email already registered');
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const id = generateId();
+      const newUser = {
+        id,
+        username,
+        email,
+        password: hashedPassword,
+        isAdmin: false,
+        createdAt: new Date().toISOString()
+      };
+
+      users.push(newUser);
+      writeJsonFile(USERS_FILE, users);
+
+      console.log('Register - User created successfully:', id);
+      const token = jwt.sign({ userId: id }, JWT_SECRET, { expiresIn: '7d' });
+      res.status(201).json({ token, user: { id, username, email, isAdmin: false } });
+    }
+  } catch (err) {
+    console.error('Register - Error:', err);
+    res.status(500).json({ error: 'Registration failed: ' + err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  console.log('=== LOGIN REQUEST ===');
+  console.log('Body:', { ...req.body, password: '[HIDDEN]' });
+
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      console.log('Login - Missing fields');
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    if (USE_DATABASE) {
+      console.log('Login - Looking up user:', email);
+      const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+
+      console.log('Login - Query result, rows found:', result.rows.length);
+
+      if (result.rows.length === 0) {
+        console.log('Login - User not found');
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const user = result.rows[0];
+      console.log('Login - User found:', user.id, user.username);
+
+      console.log('Login - Comparing passwords');
+      const isValid = await bcrypt.compare(password, user.password);
+      console.log('Login - Password valid:', isValid);
+
+      if (!isValid) {
+        console.log('Login - Invalid password');
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      console.log('Login - Generating token');
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      console.log('Login - Success for user:', user.username);
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.is_admin } });
+    } else {
+      // JSON storage
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.email === email);
+
+      if (!user) {
+        console.log('Login - User not found');
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
+        console.log('Login - Invalid password');
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      console.log('Login - Success for user:', user.username);
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email, isAdmin: user.isAdmin } });
+    }
+  } catch (err) {
+    console.error('Login - Error:', err);
+    res.status(500).json({ error: 'Login failed: ' + err.message });
+  }
+});
+
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  console.log('=== GET ME REQUEST ===');
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT id, username, email, profile_picture, is_admin FROM users WHERE id = $1', [req.userId]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const user = result.rows[0];
+      res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profile_picture, isAdmin: user.is_admin });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.id === req.userId);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      res.json({ id: user.id, username: user.username, email: user.email, profilePicture: user.profilePicture || null, isAdmin: user.isAdmin });
+    }
+  } catch (err) {
+    console.error('Get me - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// ============ USER ROUTES ============
+
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT id, username, profile_picture, created_at FROM users WHERE id = $1', [req.params.id]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        profilePicture: user.profile_picture,
+        createdAt: user.created_at
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.id === req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      res.json({
+        id: user.id,
+        username: user.username,
+        profilePicture: user.profilePicture || null,
+        createdAt: user.createdAt
+      });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Get user profile with reviews
+app.get('/api/users/:id/profile', async (req, res) => {
+  console.log('=== GET USER PROFILE ===', req.params.id);
+  try {
+    if (USE_DATABASE) {
+      const userResult = await pool.query('SELECT id, username, profile_picture, created_at FROM users WHERE id = $1', [req.params.id]);
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      const user = userResult.rows[0];
+
+      const reviewsResult = await pool.query(
+        'SELECT * FROM reviews WHERE user_id = $1 ORDER BY created_at DESC',
+        [req.params.id]
+      );
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          profilePicture: user.profile_picture,
+          createdAt: user.created_at
+        },
+        reviews: reviewsResult.rows.map(transformReview)
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const user = users.find(u => u.id === req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const allReviews = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      const userReviews = [];
+      for (const [category, reviews] of Object.entries(allReviews)) {
+        for (const review of reviews) {
+          if (review.userId === req.params.id) {
+            userReviews.push({ ...review, category });
+          }
+        }
+      }
+      userReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          profilePicture: user.profilePicture || null,
+          createdAt: user.createdAt
+        },
+        reviews: userReviews
+      });
+    }
+  } catch (err) {
+    console.error('Get user profile - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Update current user's profile
+app.put('/api/users/me', authMiddleware, async (req, res) => {
+  console.log('=== UPDATE USER PROFILE ===');
+  const { profilePicture } = req.body;
+
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'UPDATE users SET profile_picture = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [profilePicture, req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      users[userIndex].profilePicture = profilePicture;
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Update profile - Error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Upload profile picture (stores as base64 in database)
+app.post('/api/users/me/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
+  console.log('=== UPLOAD AVATAR ===');
+
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  // Convert image to base64 data URL
+  const mimeType = req.file.mimetype;
+  const base64 = req.file.buffer.toString('base64');
+  const profilePicture = `data:${mimeType};base64,${base64}`;
+
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'UPDATE users SET profile_picture = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [profilePicture, req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      users[userIndex].profilePicture = profilePicture;
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Upload avatar - Error:', err);
+    res.status(500).json({ error: 'Failed to upload avatar' });
+  }
+});
+
+// Update username
+app.put('/api/users/me/username', authMiddleware, async (req, res) => {
+  console.log('=== UPDATE USERNAME ===');
+  const { username } = req.body;
+
+  if (!username || username.trim().length < 3) {
+    return res.status(400).json({ error: 'Username must be at least 3 characters' });
+  }
+
+  try {
+    if (USE_DATABASE) {
+      // Check if username is already taken
+      const existingUser = await pool.query('SELECT id FROM users WHERE username = $1 AND id != $2', [username.trim(), req.userId]);
+      if (existingUser.rows.length > 0) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+
+      const result = await pool.query(
+        'UPDATE users SET username = $1 WHERE id = $2 RETURNING id, username, email, profile_picture, is_admin',
+        [username.trim(), req.userId]
+      );
+      const user = result.rows[0];
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        profilePicture: user.profile_picture,
+        isAdmin: user.is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.userId);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Check if username is already taken
+      const existingUser = users.find(u => u.username === username.trim() && u.id !== req.userId);
+      if (existingUser) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+
+      users[userIndex].username = username.trim();
+      writeJsonFile(USERS_FILE, users);
+
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        profilePicture: users[userIndex].profilePicture,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Update username - Error:', err);
+    res.status(500).json({ error: 'Failed to update username' });
+  }
+});
+
+// ============ ADMIN USER ROUTES ============
+
+app.get('/api/admin/users', adminMiddleware, async (req, res) => {
+  console.log('=== GET ALL USERS ===');
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT id, username, email, is_admin, created_at FROM users ORDER BY created_at DESC');
+      res.json(result.rows.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        isAdmin: u.is_admin,
+        createdAt: u.created_at
+      })));
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      res.json(users.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email,
+        isAdmin: u.isAdmin,
+        createdAt: u.createdAt
+      })));
+    }
+  } catch (err) {
+    console.error('Get users - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+app.delete('/api/admin/users/:id', adminMiddleware, async (req, res) => {
+  console.log('=== DELETE USER ===', req.params.id);
+  try {
+    if (USE_DATABASE) {
+      const checkResult = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (checkResult.rows[0].is_admin) {
+        return res.status(403).json({ error: 'Cannot delete admin user' });
+      }
+      await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+      res.json({ message: 'User deleted' });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.params.id);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (users[userIndex].isAdmin) {
+        return res.status(403).json({ error: 'Cannot delete admin user' });
+      }
+      users.splice(userIndex, 1);
+      writeJsonFile(USERS_FILE, users);
+      res.json({ message: 'User deleted' });
+    }
+  } catch (err) {
+    console.error('Delete user - Error:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
+  console.log('=== UPDATE USER ===', req.params.id);
+  console.log('Body:', req.body);
+
+  const { username, email, isAdmin, password } = req.body;
+  try {
+    if (USE_DATABASE) {
+      const checkResult = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      let updateQuery = 'UPDATE users SET username = $1, email = $2, is_admin = $3';
+      let params = [username || checkResult.rows[0].username, email || checkResult.rows[0].email, isAdmin !== undefined ? isAdmin : checkResult.rows[0].is_admin];
+
+      if (password) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        updateQuery += ', password = $4 WHERE id = $5 RETURNING *';
+        params.push(hashedPassword, req.params.id);
+      } else {
+        updateQuery += ' WHERE id = $4 RETURNING *';
+        params.push(req.params.id);
+      }
+
+      const result = await pool.query(updateQuery, params);
+      res.json({
+        id: result.rows[0].id,
+        username: result.rows[0].username,
+        email: result.rows[0].email,
+        isAdmin: result.rows[0].is_admin
+      });
+    } else {
+      const users = readJsonFile(USERS_FILE) || [];
+      const userIndex = users.findIndex(u => u.id === req.params.id);
+      if (userIndex === -1) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      users[userIndex] = {
+        ...users[userIndex],
+        username: username || users[userIndex].username,
+        email: email || users[userIndex].email,
+        isAdmin: isAdmin !== undefined ? isAdmin : users[userIndex].isAdmin,
+        password: password ? await bcrypt.hash(password, 10) : users[userIndex].password
+      };
+
+      writeJsonFile(USERS_FILE, users);
+      res.json({
+        id: users[userIndex].id,
+        username: users[userIndex].username,
+        email: users[userIndex].email,
+        isAdmin: users[userIndex].isAdmin
+      });
+    }
+  } catch (err) {
+    console.error('Update user - Error:', err);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// ============ REVIEW ROUTES ============
+
+app.get('/api/reviews/:category', async (req, res) => {
+  const { category } = req.params;
+  console.log('=== GET REVIEWS BY CATEGORY ===', category);
+  const validCategories = ['movies', 'songs', 'videogames', 'shows', 'comics'];
+  if (!validCategories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'SELECT * FROM reviews WHERE category = $1 ORDER BY created_at DESC',
+        [category]
+      );
+      res.json(result.rows.map(transformReview));
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      res.json(data[category] || []);
+    }
+  } catch (err) {
+    console.error('Get reviews - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.get('/api/reviews', async (req, res) => {
+  console.log('=== GET ALL REVIEWS ===');
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
+      const grouped = { movies: [], songs: [], videogames: [], shows: [] };
+      for (const row of result.rows) {
+        if (grouped[row.category]) {
+          grouped[row.category].push(transformReview(row));
+        }
+      }
+      res.json(grouped);
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      res.json(data);
+    }
+  } catch (err) {
+    console.error('Get all reviews - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.post('/api/reviews/:category', authMiddleware, async (req, res) => {
+  console.log('=== CREATE REVIEW ===');
+  const { category } = req.params;
+  const validCategories = ['movies', 'songs', 'videogames', 'shows', 'comics'];
+  if (!validCategories.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+
+  try {
+    if (USE_DATABASE) {
+      const id = Date.now();
+      const result = await pool.query(
+        'INSERT INTO reviews (id, title, rating, description, category, user_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+        [id, req.body.title, req.body.rating, req.body.description, category, req.userId, new Date(), new Date()]
+      );
+      console.log('Review created:', id);
+      res.status(201).json(transformReview(result.rows[0]));
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      if (!data[category]) data[category] = [];
+
+      const newReview = {
+        id: Date.now(),
+        title: req.body.title,
+        rating: req.body.rating,
+        description: req.body.description,
+        category,
+        userId: req.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      data[category].push(newReview);
+      writeJsonFile(REVIEWS_FILE, data);
+      res.status(201).json(newReview);
+    }
+  } catch (err) {
+    console.error('Create review - Error:', err);
+    res.status(500).json({ error: 'Failed to create review' });
+  }
+});
+
+app.put('/api/reviews/:category/:id', authMiddleware, async (req, res) => {
+  const { category, id } = req.params;
+  try {
+    if (USE_DATABASE) {
+      const checkResult = await pool.query(
+        'SELECT * FROM reviews WHERE category = $1 AND id = $2',
+        [category, parseInt(id)]
+      );
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+      const review = checkResult.rows[0];
+      if (review.user_id !== req.userId) {
+        return res.status(403).json({ error: 'Not authorized to edit this review' });
+      }
+
+      const result = await pool.query(
+        'UPDATE reviews SET title = $1, rating = $2, description = $3, updated_at = $4 WHERE id = $5 RETURNING *',
+        [req.body.title, req.body.rating, req.body.description, new Date(), parseInt(id)]
+      );
+      res.json(result.rows[0]);
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      if (!data[category]) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+
+      const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
+      if (reviewIndex === -1) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+
+      if (data[category][reviewIndex].userId !== req.userId) {
+        return res.status(403).json({ error: 'Not authorized to edit this review' });
+      }
+
+      data[category][reviewIndex] = {
+        ...data[category][reviewIndex],
+        title: req.body.title,
+        rating: req.body.rating,
+        description: req.body.description,
+        updatedAt: new Date().toISOString()
+      };
+
+      writeJsonFile(REVIEWS_FILE, data);
+      res.json(data[category][reviewIndex]);
+    }
+  } catch (err) {
+    console.error('Update review - Error:', err);
+    res.status(500).json({ error: 'Failed to update review' });
+  }
+});
+
+app.delete('/api/reviews/:category/:id', authMiddleware, async (req, res) => {
+  const { category, id } = req.params;
+  try {
+    if (USE_DATABASE) {
+      const checkResult = await pool.query(
+        'SELECT * FROM reviews WHERE category = $1 AND id = $2',
+        [category, parseInt(id)]
+      );
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+      const review = checkResult.rows[0];
+      if (review.user_id !== req.userId && !req.isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to delete this review' });
+      }
+
+      await pool.query('DELETE FROM reviews WHERE id = $1', [parseInt(id)]);
+      res.json(review);
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      if (!data[category]) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+
+      const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
+      if (reviewIndex === -1) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+
+      if (data[category][reviewIndex].userId !== req.userId && !req.isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to delete this review' });
+      }
+
+      const deleted = data[category].splice(reviewIndex, 1);
+      writeJsonFile(REVIEWS_FILE, data);
+      res.json(deleted[0]);
+    }
+  } catch (err) {
+    console.error('Delete review - Error:', err);
+    res.status(500).json({ error: 'Failed to delete review' });
+  }
+});
+
+app.get('/api/admin/reviews', adminMiddleware, async (req, res) => {
+  console.log('=== GET ALL REVIEWS (ADMIN) ===');
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('SELECT * FROM reviews ORDER BY created_at DESC');
+      res.json(result.rows.map(transformReview));
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      const allReviews = [];
+      for (const [cat, reviews] of Object.entries(data)) {
+        allReviews.push(...reviews.map(r => ({ ...r, category: cat })));
+      }
+      res.json(allReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    }
+  } catch (err) {
+    console.error('Get admin reviews - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
+  }
+});
+
+app.delete('/api/admin/reviews/:category/:id', adminMiddleware, async (req, res) => {
+  const { category, id } = req.params;
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('DELETE FROM reviews WHERE category = $1 AND id = $2 RETURNING *', [category, parseInt(id)]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+      res.json(result.rows[0]);
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      if (!data[category]) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+
+      const reviewIndex = data[category].findIndex(r => r.id === parseInt(id));
+      if (reviewIndex === -1) {
+        return res.status(404).json({ error: 'Review not found' });
+      }
+
+      const deleted = data[category].splice(reviewIndex, 1);
+      writeJsonFile(REVIEWS_FILE, data);
+      res.json(deleted[0]);
+    }
+  } catch (err) {
+    console.error('Delete admin review - Error:', err);
+    res.status(500).json({ error: 'Failed to delete review' });
+  }
+});
+
+// ============ SEARCH ROUTE ============
+
+app.get('/api/search', async (req, res) => {
+  const { q, category } = req.query;
+  try {
+    if (USE_DATABASE) {
+      let query = 'SELECT * FROM reviews WHERE (LOWER(title) LIKE $1 OR LOWER(description) LIKE $1)';
+      const params = [`%${q?.toLowerCase() || ''}%`];
+
+      if (category) {
+        query += ' AND category = $2';
+        params.push(category);
+      }
+
+      const result = await pool.query(query, params);
+      const grouped = { movies: [], songs: [], videogames: [], shows: [] };
+      for (const row of result.rows) {
+        if (grouped[row.category]) {
+          grouped[row.category].push(transformReview(row));
+        }
+      }
+      res.json(grouped);
+    } else {
+      const data = readJsonFile(REVIEWS_FILE) || { movies: [], songs: [], videogames: [], shows: [] };
+      const results = {};
+      const categories = category ? [category] : Object.keys(data);
+
+      for (const cat of categories) {
+        results[cat] = (data[cat] || []).filter(r =>
+          r.title.toLowerCase().includes(q?.toLowerCase()) ||
+          r.description.toLowerCase().includes(q?.toLowerCase())
+        );
+      }
+      res.json(results);
+    }
+  } catch (err) {
+    console.error('Search - Error:', err);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
+
+// ============ MOVIE ROUTES ============
+
+// Helper to upgrade poster quality
+const upgradePosterQuality = (poster) => {
+  if (!poster || poster === 'N/A') return null;
+  // Replace low quality with higher resolution
+  return poster.replace('SX300', 'SX700').replace('SX200', 'SX700');
+};
+
+// Helper: today's date as YYYY-MM-DD
+function todayDateStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Helper: date N years ago as YYYY-MM-DD
+function dateYearsAgoStr(years) {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - years);
+  return d.toISOString().slice(0, 10);
+}
+
+// Helper: build a TMDb URL with api_key and extra params
+function getTmdbUrl(endpoint, params = {}) {
+  if (!TMDB_API_KEY) return null;
+  const url = new URL(`${TMDB_URL}${endpoint}`);
+  url.searchParams.append('api_key', TMDB_API_KEY);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) url.searchParams.append(k, v);
+  });
+  return url.toString();
+}
+
+// Helper: full TMDb poster URL from poster_path
+function tmdbPoster(posterPath) {
+  return posterPath ? `${TMDB_IMG}${posterPath}` : 'N/A';
+}
+
+// Helper: fetch recent movies/shows from TMDb (returns OMDB-shaped items)
+async function fetchTmdbRecent(type) {
+  if (!TMDB_API_KEY) return [];
+  try {
+    const endpoint = type === 'movie' ? '/discover/movie' : '/discover/tv';
+    const dateParam = type === 'movie' ? 'primary_release_date' : 'first_air_date';
+    const params = {
+      sort_by: `${dateParam}.desc`,
+      [`${dateParam}.lte`]: todayDateStr(),
+      [`${dateParam}.gte`]: dateYearsAgoStr(2),
+      'vote_count.gte': 50,
+      page: 1
+    };
+    const url = getTmdbUrl(endpoint, params);
+    const response = await fetch(url);
+    const data = await response.json();
+    const results = data.results || [];
+    return results.map(item => ({
+      imdbID: `tmdb-${item.id}`,
+      Title: item.title || item.name || '',
+      Year: (item.release_date || item.first_air_date || '').slice(0, 4),
+      Poster: tmdbPoster(item.poster_path),
+      imdbRating: item.vote_average ? Number(item.vote_average).toFixed(1) : '',
+      _source: 'tmdb'
+    }));
+  } catch (err) {
+    console.error('TMDb recent fetch error:', err.message);
+    return [];
+  }
+}
+
+// Helper: fetch TMDb details (movie or tv) and shape to OMDB-like response
+async function fetchTmdbDetails(id, type) {
+  if (!TMDB_API_KEY) return null;
+  try {
+    const endpoint = type === 'movie' ? `/movie/${id}` : `/tv/${id}`;
+    const url = getTmdbUrl(endpoint, { append_to_response: 'credits,external_ids' });
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!data.id) return null;
+
+    const credits = data.credits || {};
+    const directorJob = type === 'movie' ? 'Director' : 'Creator';
+    const directors = (credits.crew || [])
+      .filter(c => c.job === directorJob)
+      .map(c => c.name)
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .slice(0, 3)
+      .join(', ');
+    const actors = (credits.cast || []).slice(0, 5).map(c => c.name).join(', ');
+    const genres = (data.genres || []).map(g => g.name).join(', ');
+
+    return {
+      Response: 'True',
+      imdbID: data.external_ids?.imdb_id || `tmdb-${data.id}`,
+      Title: data.title || data.name || '',
+      Year: (data.release_date || data.first_air_date || '').slice(0, 4),
+      Poster: tmdbPoster(data.poster_path),
+      Plot: data.overview || '',
+      Genre: genres || 'N/A',
+      Director: directors || 'N/A',
+      Actors: actors || 'N/A',
+      imdbRating: data.vote_average ? Number(data.vote_average).toFixed(1) : 'N/A'
+    };
+  } catch (err) {
+    console.error('TMDb details error:', err.message);
+    return null;
+  }
+}
+
+// Search movies from OMDB API
+app.get('/api/movies/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH MOVIES (OMDB) ===', query);
+
+  try {
+    const searchUrl = query
+      ? `${OMDB_URL}?s=${encodeURIComponent(query)}&apikey=${OMDB_API_KEY}&type=movie`
+      : `${OMDB_URL}?s=movie&apikey=${OMDB_API_KEY}&type=movie`;
+
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
+
+    if (data.Response === 'True') {
+      // Upgrade poster quality
+      const movies = (data.Search || []).map(movie => ({
+        ...movie,
+        Poster: upgradePosterQuality(movie.Poster)
+      }));
+      res.json({ Response: 'True', Search: movies });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'No movies found', Search: [] });
+    }
+  } catch (err) {
+    console.error('Search movies - Error:', err);
+    res.status(500).json({ error: 'Failed to search movies' });
+  }
+});
+
+// Search shows from OMDB API
+app.get('/api/shows/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH SHOWS (OMDB) ===', query);
+
+  try {
+    const searchUrl = `${OMDB_URL}?s=${encodeURIComponent(query || '')}&apikey=${OMDB_API_KEY}&type=series`;
+
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    console.log('OMDB Response:', JSON.stringify(data).substring(0, 200));
+
+    if (data.Response === 'True') {
+      // Upgrade poster quality
+      const shows = (data.Search || []).map(show => ({
+        ...show,
+        Poster: upgradePosterQuality(show.Poster)
+      }));
+      res.json({ Response: 'True', Search: shows });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'No shows found', Search: [] });
+    }
+  } catch (err) {
+    console.error('Search shows - Error:', err);
+    res.status(500).json({ error: 'Failed to search shows' });
+  }
+});
+
+// Get movie details from OMDB API (or TMDb if id is prefixed with tmdb-)
+app.get('/api/movies/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET MOVIE DETAILS ===', id);
+
+  // TMDb-sourced item
+  if (id.startsWith('tmdb-')) {
+    const tmdbId = id.slice(5);
+    const details = await fetchTmdbDetails(tmdbId, 'movie');
+    if (details) {
+      return res.json(details);
+    }
+    return res.json({ Response: 'False', Error: 'Movie not found in TMDb' });
+  }
+
+  try {
+    const response = await fetch(`${OMDB_URL}?i=${id}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+
+    if (data.Response === 'True') {
+      // Upgrade poster quality
+      const movie = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...movie });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'Movie not found' });
+    }
+  } catch (err) {
+    console.error('Get movie - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch movie' });
+  }
+});
+
+// Get movies (recent from TMDb + popular from OMDB)
+app.get('/api/movies', async (req, res) => {
+  console.log('=== GET ALL MOVIES ===');
+
+  try {
+    const allMovies = [];
+    const seenIds = new Set();
+
+    // 1) Recent releases from TMDb (if key configured)
+    const recent = await fetchTmdbRecent('movie');
+    for (const movie of recent) {
+      if (!seenIds.has(movie.imdbID)) {
+        seenIds.add(movie.imdbID);
+        allMovies.push(movie);
+      }
+    }
+    console.log('Recent movies from TMDb:', recent.length);
+
+    // 2) Popular from OMDB API
+    const popularSearches = ['star wars', 'marvel', 'inception', 'matrix', 'avatar'];
+
+    for (const search of popularSearches) {
+      try {
+        const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=movie`);
+        const data = await response.json();
+        if (data.Response === 'True' && data.Search) {
+          for (const movie of data.Search) {
+            if (!seenIds.has(movie.imdbID)) {
+              seenIds.add(movie.imdbID);
+              allMovies.push({
+                ...movie,
+                Poster: upgradePosterQuality(movie.Poster)
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error fetching ${search}:`, e.message);
+      }
+    }
+
+    console.log('Total movies found:', allMovies.length);
+    res.json({ Response: 'True', Search: allMovies });
+  } catch (err) {
+    console.error('Get movies - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch movies' });
+  }
+});
+
+// Get random movie recommendation
+app.get('/api/movies/random', async (req, res) => {
+  console.log('=== GET RANDOM MOVIE ===');
+
+  try {
+    // List of popular movies to randomly pick from
+    const randomMovies = [
+      'tt0111161', // The Shawshank Redemption
+      'tt0468569', // The Dark Knight
+      'tt1375666', // Inception
+      'tt0137523', // Fight Club
+      'tt0110912', // Pulp Fiction
+      'tt0109830', // Forrest Gump
+      'tt0068646', // The Godfather
+      'tt0167260', // The Lord of the Rings: The Return of the King
+      'tt0120737', // The Lord of the Rings: The Fellowship of the Ring
+      'tt0108052', // Schindler's List
+      'tt0080684', // Star Wars: Episode V - The Empire Strikes Back
+      'tt0816692', // Interstellar
+      'tt0133093', // The Matrix
+      'tt0071562', // The Godfather: Part II
+      'tt0050083', // Psycho
+      'tt0038650', // It's a Wonderful Life
+      'tt0167261', // The Lord of the Rings: The Two Towers
+      'tt0048473', // Rear Window
+      'tt0056058', // To Kill a Mockingbird
+      'tt0317248', // City of God
+      'tt0076759', // Star Wars: Episode IV - A New Hope
+      'tt0118799', // Saving Private Ryan
+      'tt0057012', // Dr. Strangelove
+      'tt0245429', // Spirited Away
+      'tt0027977', // Modern Times
+      'tt0054215', // The Apartment
+      'tt0017136', // Metropolis
+      'tt0110607', // The Usual Suspects
+      'tt0034583', // Casablanca
+      'tt0021749', // City Lights
+      'tt0053604', // La Dolce Vita
+      'tt0088763', // Back to the Future
+      'tt0095765', // Braveheart
+      'tt0099685', // American Beauty
+      'tt0102926', // The Silence of the Lambs
+      'tt0073486', // Jaws
+      'tt0084787', // The Thing
+      'tt0110413', // Léon: The Professional
+      'tt0091763', // The Princess Bride
+      'tt0083658', // Blade Runner
+      'tt0180093', // Requiem for a Dream
+      'tt0253474', // The Pianist
+      'tt0040522', // Bicycle Thieves
+      'tt0078788', // Apocalypse Now
+      'tt0097576', // Indiana Jones and the Last Crusade
+      'tt1853728', // Django Unchained
+      'tt0848228', // The Avengers
+      'tt4154796', // Avengers: Endgame
+      'tt4154756', // Avengers: Infinity War
+      'tt3501632', // Spider-Man: No Way Home
+      'tt7286456', // Joker
+      'tt6751668', // Parasite
+    ];
+
+    // Pick a random movie ID
+    const randomId = randomMovies[Math.floor(Math.random() * randomMovies.length)];
+
+    const response = await fetch(`${OMDB_URL}?i=${randomId}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+
+    if (data.Response === 'True') {
+      const movie = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...movie });
+    } else {
+      res.json({ Response: 'False', Error: 'Could not get random movie' });
+    }
+  } catch (err) {
+    console.error('Get random movie - Error:', err);
+    res.status(500).json({ error: 'Failed to get random movie' });
+  }
+});
+
+// Get shows (recent from TMDb + popular from OMDB)
+app.get('/api/shows', async (req, res) => {
+  console.log('=== GET ALL SHOWS ===');
+
+  try {
+    const allShows = [];
+    const seenIds = new Set();
+
+    // 1) Recent series from TMDb (if key configured)
+    const recent = await fetchTmdbRecent('tv');
+    for (const show of recent) {
+      if (!seenIds.has(show.imdbID)) {
+        seenIds.add(show.imdbID);
+        allShows.push(show);
+      }
+    }
+    console.log('Recent shows from TMDb:', recent.length);
+
+    // 2) Popular from OMDB API
+    const popularSearches = ['breaking bad', 'game of thrones', 'stranger things', 'the office', 'friends'];
+
+    for (const search of popularSearches) {
+      try {
+        const response = await fetch(`${OMDB_URL}?s=${encodeURIComponent(search)}&apikey=${OMDB_API_KEY}&type=series`);
+        const data = await response.json();
+        if (data.Response === 'True' && data.Search) {
+          for (const show of data.Search) {
+            if (!seenIds.has(show.imdbID)) {
+              seenIds.add(show.imdbID);
+              allShows.push({
+                ...show,
+                Poster: upgradePosterQuality(show.Poster)
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error fetching ${search}:`, e.message);
+      }
+    }
+
+    console.log('Total shows found:', allShows.length);
+    res.json({ Response: 'True', Search: allShows });
+  } catch (err) {
+    console.error('Get shows - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch shows' });
+  }
+});
+
+// Get show details from OMDB API (or TMDb if id is prefixed with tmdb-)
+app.get('/api/shows/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET SHOW DETAILS ===', id);
+
+  // TMDb-sourced item
+  if (id.startsWith('tmdb-')) {
+    const tmdbId = id.slice(5);
+    const details = await fetchTmdbDetails(tmdbId, 'tv');
+    if (details) {
+      return res.json(details);
+    }
+    return res.json({ Response: 'False', Error: 'Show not found in TMDb' });
+  }
+
+  try {
+    const response = await fetch(`${OMDB_URL}?i=${id}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+
+    if (data.Response === 'True') {
+      const show = {
+        ...data,
+        Poster: upgradePosterQuality(data.Poster)
+      };
+      res.json({ Response: 'True', ...show });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'Show not found' });
+    }
+  } catch (err) {
+    console.error('Get show - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch show' });
+  }
+});
+
+// ============ ITUNES API FOR SONGS/ALBUMS ============
+
+const ITUNES_URL = 'https://itunes.apple.com';
+
+// Search songs/albums from iTunes API
+app.get('/api/songs/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH SONGS (iTUNES) ===', query);
+
+  if (!query || !query.trim()) {
+    return res.json({ results: [] });
+  }
+
+  try {
+    const searchUrl = `${ITUNES_URL}/search?term=${encodeURIComponent(query)}&media=music&entity=album&limit=20`;
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+
+    console.log('iTunes Response:', data.resultCount, 'results');
+
+    // Transform iTunes results to match our format
+    // Replace 100x100 with higher resolution (600x600 for better quality)
+    const results = (data.results || []).map(item => ({
+      id: item.collectionId || item.trackId,
+      title: item.collectionName || item.trackName,
+      artist: item.artistName,
+      year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
+      poster: item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : null,
+      genre: item.primaryGenreName,
+      type: item.collectionType || 'Album'
+    }));
+
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Search songs - Error:', err);
+    res.status(500).json({ error: 'Failed to search songs' });
+  }
+});
+
+// Get popular songs/albums (recent new-releases from Apple RSS + popular from iTunes)
+app.get('/api/songs', async (req, res) => {
+  console.log('=== GET POPULAR SONGS ===');
+
+  try {
+    const allAlbums = [];
+    const seenIds = new Set();
+
+    // 1) Recent new-releases from Apple Marketing Tools RSS (no key required)
+    try {
+      const rssResponse = await fetch(ITUNES_RSS_URL);
+      const rssData = await rssResponse.json();
+      const feedResults = rssData?.feed?.results || [];
+      for (const item of feedResults) {
+        const id = item.collectionId || item.id;
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          allAlbums.push({
+            id,
+            title: item.collectionName || item.name,
+            artist: item.artistName,
+            year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
+            poster: item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : null,
+            genre: item.genres?.length ? item.genres.map(g => g.name).join(', ') : ''
+          });
+        }
+      }
+      console.log('Recent albums from Apple RSS:', feedResults.length);
+    } catch (e) {
+      console.error('Error fetching Apple RSS new-releases:', e.message);
+    }
+
+    // 2) Popular artists from iTunes search
+    const popularArtists = ['Taylor Swift', 'Drake', 'Ed Sheeran', 'Beyonce', 'The Weeknd'];
+
+    for (const artist of popularArtists) {
+      try {
+        const response = await fetch(`${ITUNES_URL}/search?term=${encodeURIComponent(artist)}&media=music&entity=album&limit=5`);
+        const data = await response.json();
+
+        if (data.results) {
+          for (const item of data.results) {
+            if (!seenIds.has(item.collectionId)) {
+              seenIds.add(item.collectionId);
+              allAlbums.push({
+                id: item.collectionId,
+                title: item.collectionName,
+                artist: item.artistName,
+                year: item.releaseDate ? new Date(item.releaseDate).getFullYear() : '',
+                poster: item.artworkUrl100 ? item.artworkUrl100.replace('100x100', '600x600') : null,
+                genre: item.primaryGenreName
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error fetching ${artist}:`, e.message);
+      }
+    }
+
+    console.log('Total albums found:', allAlbums.length);
+    res.json({ Response: 'True', results: allAlbums });
+  } catch (err) {
+    console.error('Get songs - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch songs' });
+  }
+});
+
+// Get album/song details from iTunes API
+app.get('/api/songs/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET SONG DETAILS ===', id);
+
+  try {
+    const response = await fetch(`${ITUNES_URL}/lookup?id=${id}&entity=song`);
+    const data = await response.json();
+
+    if (data.results && data.results.length > 0) {
+      const album = data.results[0];
+      const tracks = data.results.slice(1).map(track => ({
+        id: track.trackId,
+        title: track.trackName,
+        duration: track.trackTimeMillis
+      }));
+
+      res.json({
+        Response: 'True',
+        id: album.collectionId,
+        title: album.collectionName,
+        artist: album.artistName,
+        year: album.releaseDate ? new Date(album.releaseDate).getFullYear() : '',
+        poster: album.artworkUrl100 ? album.artworkUrl100.replace('100x100', '600x600') : null,
+        genre: album.primaryGenreName,
+        tracks: tracks.slice(0, 10) // First 10 tracks
+      });
+    } else {
+      res.json({ Response: 'False', Error: 'Album not found' });
+    }
+  } catch (err) {
+    console.error('Get song details - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch song details' });
+  }
+});
+
+// ============ RAWG API FOR VIDEO GAMES ============
+
+const RAWG_URL = 'https://api.rawg.io/api';
+const RAWG_API_KEY = process.env.RAWG_API_KEY || '';
+
+// ============ KEYLESS FALLBACK (Steam Storefront + CheapShark) ============
+// Used when RAWG_API_KEY is not configured. No API key required.
+const STEAM_FEATURED_URL = 'https://store.steampowered.com/api/featuredcategories';
+const STEAM_APPDETAILS_URL = 'https://store.steampowered.com/api/appdetails';
+const CHEAPSHARK_SEARCH_URL = 'https://www.cheapshark.com/api/1.0/games';
+
+function stripHtml(html) {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseYear(dateStr) {
+  if (!dateStr) return '';
+  const m = String(dateStr).match(/\d{4}/);
+  return m ? parseInt(m[0], 10) : '';
+}
+
+// Fetch full details for a single Steam appid (keyless)
+async function fetchSteamAppDetails(appid) {
+  try {
+    const res = await fetch(`${STEAM_APPDETAILS_URL}?appids=${appid}&l=en`);
+    if (!res.ok) return null;
+    const body = await res.json();
+    const entry = body[String(appid)];
+    if (!entry || !entry.success || !entry.data) return null;
+    const d = entry.data;
+    const metacritic = d.metacritic?.score || null;
+    return {
+      id: d.steam_appid || appid,
+      title: d.name || '',
+      year: parseYear(d.release_date?.date),
+      poster: d.header_image || '',
+      description: stripHtml(d.about_the_game || d.short_description || ''),
+      rating: metacritic ? +(metacritic / 20).toFixed(1) : 0,
+      metacritic,
+      genres: d.genres?.map(g => g.description).join(', ') || '',
+      platforms: d.platforms ? Object.keys(d.platforms).filter(p => d.platforms[p]).join(', ') : '',
+      developers: (d.developers || []).join(', '),
+      publishers: (d.publishers || []).join(', ')
+    };
+  } catch (e) {
+    console.error(`Steam appdetails (${appid}) error:`, e.message);
+    return null;
+  }
+}
+
+// Keyless listing: pull appids from Steam featured categories, enrich in parallel
+async function getKeylessGames() {
+  const res = await fetch(STEAM_FEATURED_URL);
+  if (!res.ok) throw new Error(`Steam featured returned ${res.status}`);
+  const featured = await res.json();
+
+  const appids = [];
+  const seen = new Set();
+  for (const cat of ['top_sellers', 'new_releases', 'specials']) {
+    for (const item of (featured[cat]?.items || [])) {
+      if (item.id && !seen.has(item.id)) {
+        seen.add(item.id);
+        appids.push(item.id);
+        if (appids.length >= 15) break;
+      }
+    }
+    if (appids.length >= 15) break;
+  }
+
+  const details = await Promise.all(appids.map(id => fetchSteamAppDetails(id)));
+  return details.filter(Boolean);
+}
+
+// Keyless search: CheapShark for appids, enrich with Steam appdetails
+async function searchKeylessGames(query) {
+  const res = await fetch(`${CHEAPSHARK_SEARCH_URL}?title=${encodeURIComponent(query)}&limit=15`);
+  if (!res.ok) throw new Error(`CheapShark returned ${res.status}`);
+  const results = await res.json();
+  const appids = results.filter(g => g.steamAppID).slice(0, 12).map(g => g.steamAppID);
+  const details = await Promise.all(appids.map(id => fetchSteamAppDetails(id)));
+  return details.filter(Boolean);
+}
+
+// Helper to add API key to RAWG requests
+const getRawgUrl = (endpoint, params = {}) => {
+  if (!RAWG_API_KEY) {
+    return null; // Will return error response
+  }
+  const url = new URL(`${RAWG_URL}${endpoint}`);
+  url.searchParams.append('key', RAWG_API_KEY);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      url.searchParams.append(key, value);
+    }
+  });
+  return url.toString();
+};
+
+// Check if games API is configured (RAWG key, or keyless Steam fallback)
+app.get('/api/games/status', (req, res) => {
+  res.json({
+    configured: true,
+    provider: RAWG_API_KEY ? 'rawg' : 'steam-keyless',
+    message: RAWG_API_KEY ? 'RAWG API key configured' : 'Using keyless Steam Storefront + CheapShark fallback'
+  });
+});
+
+// Search video games (RAWG if key present, otherwise keyless CheapShark + Steam)
+app.get('/api/games/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH GAMES ===', query, RAWG_API_KEY ? '(RAWG)' : '(keyless)');
+
+  if (!query || !query.trim()) {
+    return res.json({ results: [] });
+  }
+
+  try {
+    if (RAWG_API_KEY) {
+      const url = getRawgUrl('/games', { search: query, page_size: 20 });
+      const response = await fetch(url);
+      const data = await response.json();
+      const results = (data.results || []).map(game => ({
+        id: game.id,
+        title: game.name,
+        year: game.released ? new Date(game.released).getFullYear() : '',
+        poster: game.background_image,
+        rating: game.rating,
+        genres: game.genres?.map(g => g.name).join(', ') || ''
+      }));
+      res.json({ Response: 'True', results });
+    } else {
+      const results = await searchKeylessGames(query);
+      res.json({ Response: 'True', results });
+    }
+  } catch (err) {
+    console.error('Search games - Error:', err);
+    res.status(500).json({ error: 'Failed to search games' });
+  }
+});
+
+// Get games listing (RAWG if key present, otherwise keyless Steam featured)
+app.get('/api/games', async (req, res) => {
+  console.log('=== GET GAMES ===', RAWG_API_KEY ? '(RAWG)' : '(keyless)');
+
+  if (RAWG_API_KEY) {
+    try {
+      const allGames = [];
+      const seenIds = new Set();
+
+    const addGame = (game) => {
+      if (game.id && !seenIds.has(game.id)) {
+        seenIds.add(game.id);
+        allGames.push({
+          id: game.id,
+          title: game.name,
+          year: game.released ? new Date(game.released).getFullYear() : '',
+          poster: game.background_image,
+          rating: game.rating,
+          genres: game.genres?.map(g => g.name).join(', ') || ''
+        });
+      }
+    };
+
+    // 1) Recent releases (last 2 years), ordered by release date desc
+    try {
+      const recentUrl = getRawgUrl('/games', {
+        ordering: '-released',
+        dates: `${dateYearsAgoStr(2)},${todayDateStr()}`,
+        page_size: 20,
+        metacritic: '70,100'
+      });
+      const recentResponse = await fetch(recentUrl);
+      const recentData = await recentResponse.json();
+      (recentData.results || []).forEach(addGame);
+      console.log('Recent games from RAWG:', recentData.results?.length || 0);
+    } catch (e) {
+      console.error('Error fetching recent games:', e.message);
+    }
+
+    // 2) Top-rated (fallback / complement so the page is never empty)
+    try {
+      const popularUrl = getRawgUrl('/games', {
+        ordering: '-rating',
+        page_size: 20,
+        metacritic: '70,100'
+      });
+      const popularResponse = await fetch(popularUrl);
+      const popularData = await popularResponse.json();
+      (popularData.results || []).forEach(addGame);
+    } catch (e) {
+      console.error('Error fetching popular games:', e.message);
+    }
+
+    res.json({ Response: 'True', results: allGames });
+    } catch (err) {
+      console.error('Get games - Error:', err);
+      res.status(500).json({ error: 'Failed to fetch games' });
+    }
+  } else {
+    try {
+      const results = await getKeylessGames();
+      res.json({ Response: 'True', results });
+    } catch (err) {
+      console.error('Get games (keyless) - Error:', err);
+      res.status(502).json({
+        Response: 'False',
+        Error: 'Failed to fetch games from Steam. Try again in a moment.'
+      });
+    }
+  }
+});
+
+// Get game details (RAWG if key present, otherwise keyless Steam appdetails)
+app.get('/api/games/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET GAME DETAILS ===', id, RAWG_API_KEY ? '(RAWG)' : '(keyless)');
+
+  if (RAWG_API_KEY) {
+    try {
+      const url = getRawgUrl(`/games/${id}`);
+      const response = await fetch(url);
+      const game = await response.json();
+
+      if (game.id) {
+        res.json({
+          Response: 'True',
+          id: game.id,
+          title: game.name,
+          year: game.released ? new Date(game.released).getFullYear() : '',
+          poster: game.background_image,
+          description: game.description_raw || game.description || '',
+          rating: game.rating,
+          metacritic: game.metacritic,
+          genres: game.genres?.map(g => g.name).join(', ') || '',
+          platforms: game.platforms?.map(p => p.platform.name).join(', ') || '',
+          developers: game.developers?.map(d => d.name).join(', ') || '',
+          publishers: game.publishers?.map(p => p.name).join(', ') || ''
+        });
+      } else {
+        res.json({ Response: 'False', Error: 'Game not found' });
+      }
+    } catch (err) {
+      console.error('Get game details - Error:', err);
+      res.status(500).json({ error: 'Failed to fetch game details' });
+    }
+  } else {
+    try {
+      const game = await fetchSteamAppDetails(id);
+      if (game) {
+        res.json({ Response: 'True', ...game });
+      } else {
+        res.json({ Response: 'False', Error: 'Game not found' });
+      }
+    } catch (err) {
+      console.error('Get game details (keyless) - Error:', err);
+      res.status(500).json({ error: 'Failed to fetch game details' });
+    }
+  }
+});
+
+// ============ COMICS API (Open Library - keyless) ============
+const OL_SEARCH_URL = 'https://openlibrary.org/search.json';
+const OL_WORK_URL = 'https://openlibrary.org/works';
+const OL_COVER_URL = 'https://covers.openlibrary.org/b/id';
+
+function olCoverUrl(coverId, size = 'M') {
+  return coverId ? `${OL_COVER_URL}/${coverId}-${size}.jpg` : '';
+}
+
+// Shape an Open Library search doc into a listing item
+function shapeComic(doc) {
+  const olid = (doc.key || '').replace('/works/', '');
+  return {
+    id: olid,
+    title: doc.title || 'Unknown',
+    author: (doc.author_name || []).join(', ') || 'Unknown',
+    year: doc.first_publish_year || '',
+    poster: olCoverUrl(doc.cover_i),
+    subjects: (doc.subject || []).slice(0, 5)
+  };
+}
+
+// Get popular/trending graphic novels
+app.get('/api/comics', async (req, res) => {
+  console.log('=== GET COMICS (Open Library) ===');
+  try {
+    const params = new URLSearchParams({
+      subject: 'graphic novel',
+      limit: '20',
+      sort: 'rating',  // Open Library supports sort by rating
+      fields: 'key,title,author_name,first_publish_year,cover_i,subject'
+    });
+    const response = await fetch(`${OL_SEARCH_URL}?${params}`);
+    if (!response.ok) throw new Error(`Open Library returned ${response.status}`);
+    const data = await response.json();
+    const results = (data.docs || []).map(shapeComic);
+    console.log(`Comics from Open Library: ${results.length}`);
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Get comics - Error:', err);
+    res.status(502).json({ Response: 'False', Error: 'Failed to fetch comics. Try again in a moment.' });
+  }
+});
+
+// Search comics by title or author
+app.get('/api/comics/search', async (req, res) => {
+  const { query } = req.query;
+  console.log('=== SEARCH COMICS ===', query);
+  if (!query || !query.trim()) {
+    return res.json({ results: [] });
+  }
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      subject: 'comic',
+      limit: '20',
+      fields: 'key,title,author_name,first_publish_year,cover_i,subject'
+    });
+    const response = await fetch(`${OL_SEARCH_URL}?${params}`);
+    if (!response.ok) throw new Error(`Open Library returned ${response.status}`);
+    const data = await response.json();
+    const results = (data.docs || []).map(shapeComic);
+    res.json({ Response: 'True', results });
+  } catch (err) {
+    console.error('Search comics - Error:', err);
+    res.status(502).json({ Response: 'False', Error: 'Failed to search comics' });
+  }
+});
+
+// Get comic details (work endpoint)
+app.get('/api/comics/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('=== GET COMIC DETAILS ===', id);
+  try {
+    const response = await fetch(`${OL_WORK_URL}/${id}.json`);
+    if (!response.ok) throw new Error(`Open Library returned ${response.status}`);
+    const work = await response.json();
+
+    // Description can be a string or { type, value }
+    let description = '';
+    if (typeof work.description === 'string') {
+      description = work.description;
+    } else if (work.description && work.description.value) {
+      description = work.description.value;
+    }
+
+    // Fetch author names (work only has author keys)
+    const authorNames = [];
+    if (work.authors) {
+      const authorFetches = work.authors.slice(0, 3).map(async (a) => {
+        try {
+          const aRes = await fetch(`https://openlibrary.org${a.author.key}.json`);
+          const aData = await aRes.json();
+          return aData.name || '';
+        } catch { return ''; }
+      });
+      const names = await Promise.all(authorFetches);
+      authorNames.push(...names.filter(Boolean));
+    }
+
+    res.json({
+      Response: 'True',
+      id,
+      title: work.title || '',
+      author: authorNames.join(', ') || 'Unknown',
+      year: work.first_publish_date || '',
+      poster: olCoverUrl(work.covers ? work.covers[0] : null, 'L'),
+      description,
+      subjects: (work.subjects || []).slice(0, 10)
+    });
+  } catch (err) {
+    console.error('Get comic details - Error:', err);
+    res.status(502).json({ Response: 'False', Error: 'Failed to fetch comic details' });
+  }
+});
+
+// ============ WATCHLISTS & CUSTOM LISTS ============
+const VALID_LIST_CATEGORIES = ['movies', 'shows', 'songs', 'videogames', 'comics'];
+
+function getUserWatchlists(userId) {
+  const all = readJsonFile(WATCHLISTS_FILE) || {};
+  if (!all[userId]) {
+    const empty = {};
+    for (const cat of VALID_LIST_CATEGORIES) empty[cat] = [];
+    return empty;
+  }
+  // Ensure all categories exist
+  for (const cat of VALID_LIST_CATEGORIES) {
+    if (!all[userId][cat]) all[userId][cat] = [];
+  }
+  return all[userId];
+}
+
+function saveUserWatchlists(userId, data) {
+  const all = readJsonFile(WATCHLISTS_FILE) || {};
+  all[userId] = data;
+  writeJsonFile(WATCHLISTS_FILE, all);
+}
+
+function getUserLists(userId) {
+  const all = readJsonFile(LISTS_FILE) || {};
+  return all[userId] || [];
+}
+
+function saveUserLists(userId, lists) {
+  const all = readJsonFile(LISTS_FILE) || {};
+  all[userId] = lists;
+  writeJsonFile(LISTS_FILE, all);
+}
+
+// --- Watchlist endpoints ---
+
+// Get current user's full watchlist
+app.get('/api/watchlist', authMiddleware, (req, res) => {
+  try {
+    const data = getUserWatchlists(req.userId);
+    res.json(data);
+  } catch (err) {
+    console.error('Get watchlist - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch watchlist' });
+  }
+});
+
+// Add item to watchlist for a category
+app.post('/api/watchlist/:category', authMiddleware, (req, res) => {
+  const { category } = req.params;
+  if (!VALID_LIST_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+  const { id, title, year, poster } = req.body;
+  if (!id || !title) {
+    return res.status(400).json({ error: 'Item id and title are required' });
+  }
+  try {
+    const data = getUserWatchlists(req.userId);
+    const exists = data[category].some(item => String(item.id) === String(id));
+    if (exists) {
+      return res.status(409).json({ error: 'Already in watchlist' });
+    }
+    data[category].push({ id, title, year: year || '', poster: poster || '', addedAt: new Date().toISOString() });
+    saveUserWatchlists(req.userId, data);
+    res.status(201).json({ success: true, message: 'Added to watchlist' });
+  } catch (err) {
+    console.error('Add to watchlist - Error:', err);
+    res.status(500).json({ error: 'Failed to add to watchlist' });
+  }
+});
+
+// Remove item from watchlist
+app.delete('/api/watchlist/:category/:itemId', authMiddleware, (req, res) => {
+  const { category, itemId } = req.params;
+  if (!VALID_LIST_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+  try {
+    const data = getUserWatchlists(req.userId);
+    data[category] = data[category].filter(item => String(item.id) !== String(itemId));
+    saveUserWatchlists(req.userId, data);
+    res.json({ success: true, message: 'Removed from watchlist' });
+  } catch (err) {
+    console.error('Remove from watchlist - Error:', err);
+    res.status(500).json({ error: 'Failed to remove from watchlist' });
+  }
+});
+
+// --- Custom list endpoints ---
+
+// Get all custom lists for current user
+app.get('/api/lists', authMiddleware, (req, res) => {
+  try {
+    const lists = getUserLists(req.userId);
+    res.json({ lists });
+  } catch (err) {
+    console.error('Get lists - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch lists' });
+  }
+});
+
+// Create a new list
+app.post('/api/lists', authMiddleware, (req, res) => {
+  const { name, category } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'List name is required' });
+  }
+  if (!VALID_LIST_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
+  }
+  try {
+    const lists = getUserLists(req.userId);
+    const newList = {
+      id: generateId(),
+      name: name.trim(),
+      category,
+      items: [],
+      createdAt: new Date().toISOString()
+    };
+    lists.push(newList);
+    saveUserLists(req.userId, lists);
+    res.status(201).json(newList);
+  } catch (err) {
+    console.error('Create list - Error:', err);
+    res.status(500).json({ error: 'Failed to create list' });
+  }
+});
+
+// Delete a list
+app.delete('/api/lists/:listId', authMiddleware, (req, res) => {
+  const { listId } = req.params;
+  try {
+    let lists = getUserLists(req.userId);
+    lists = lists.filter(l => l.id !== listId);
+    saveUserLists(req.userId, lists);
+    res.json({ success: true, message: 'List deleted' });
+  } catch (err) {
+    console.error('Delete list - Error:', err);
+    res.status(500).json({ error: 'Failed to delete list' });
+  }
+});
+
+// Add item to a list
+app.post('/api/lists/:listId/items', authMiddleware, (req, res) => {
+  const { listId } = req.params;
+  const { id, title, year, poster } = req.body;
+  if (!id || !title) {
+    return res.status(400).json({ error: 'Item id and title are required' });
+  }
+  try {
+    const lists = getUserLists(req.userId);
+    const list = lists.find(l => l.id === listId);
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' });
+    }
+    const exists = list.items.some(item => String(item.id) === String(id));
+    if (exists) {
+      return res.status(409).json({ error: 'Already in list' });
+    }
+    list.items.push({ id, title, year: year || '', poster: poster || '', addedAt: new Date().toISOString() });
+    saveUserLists(req.userId, lists);
+    res.status(201).json({ success: true, message: 'Added to list' });
+  } catch (err) {
+    console.error('Add to list - Error:', err);
+    res.status(500).json({ error: 'Failed to add to list' });
+  }
+});
+
+// Remove item from a list
+app.delete('/api/lists/:listId/items/:itemId', authMiddleware, (req, res) => {
+  const { listId, itemId } = req.params;
+  try {
+    const lists = getUserLists(req.userId);
+    const list = lists.find(l => l.id === listId);
+    if (!list) {
+      return res.status(404).json({ error: 'List not found' });
+    }
+    list.items = list.items.filter(item => String(item.id) !== String(itemId));
+    saveUserLists(req.userId, lists);
+    res.json({ success: true, message: 'Removed from list' });
+  } catch (err) {
+    console.error('Remove from list - Error:', err);
+    res.status(500).json({ error: 'Failed to remove from list' });
+  }
+});
+
+// ============ EPISODE TRACKING (SHOWS) ============
+
+function getUserEpisodes(userId) {
+  const all = readJsonFile(EPISODES_FILE) || {};
+  return all[userId] || {};
+}
+
+function saveUserEpisodes(userId, data) {
+  const all = readJsonFile(EPISODES_FILE) || {};
+  all[userId] = data;
+  writeJsonFile(EPISODES_FILE, all);
+}
+
+// Get all tracked shows for current user (for the Lists page)
+app.get('/api/episodes', authMiddleware, (req, res) => {
+  try {
+    const data = getUserEpisodes(req.userId);
+    res.json({ shows: Object.values(data) });
+  } catch (err) {
+    console.error('Get episodes - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch episode tracking' });
+  }
+});
+
+// Get tracking for a single show
+app.get('/api/episodes/:showId', authMiddleware, (req, res) => {
+  try {
+    const data = getUserEpisodes(req.userId);
+    const tracked = data[req.params.showId];
+    res.json(tracked || null);
+  } catch (err) {
+    console.error('Get episode show - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch episode tracking' });
+  }
+});
+
+// Upsert tracking for a show (creates or updates)
+app.put('/api/episodes/:showId', authMiddleware, (req, res) => {
+  const { showId } = req.params;
+  const { title, year, poster, totalSeasons, seasons, nextEpisode } = req.body;
+  if (!title) {
+    return res.status(400).json({ error: 'Show title is required' });
+  }
+  try {
+    const data = getUserEpisodes(req.userId);
+    const existing = data[showId] || { showId, seasons: {}, nextEpisode: null };
+    const updated = {
+      showId,
+      title,
+      year: year || existing.year || '',
+      poster: poster || existing.poster || '',
+      totalSeasons: totalSeasons !== undefined ? totalSeasons : existing.totalSeasons,
+      seasons: seasons || existing.seasons || {},
+      nextEpisode: nextEpisode !== undefined ? nextEpisode : existing.nextEpisode,
+      updatedAt: new Date().toISOString(),
+      createdAt: existing.createdAt || new Date().toISOString()
+    };
+    data[showId] = updated;
+    saveUserEpisodes(req.userId, data);
+    res.json(updated);
+  } catch (err) {
+    console.error('Upsert episode tracking - Error:', err);
+    res.status(500).json({ error: 'Failed to save episode tracking' });
+  }
+});
+
+// Remove tracking for a show
+app.delete('/api/episodes/:showId', authMiddleware, (req, res) => {
+  try {
+    const data = getUserEpisodes(req.userId);
+    if (!data[req.params.showId]) {
+      return res.status(404).json({ error: 'Show not tracked' });
+    }
+    delete data[req.params.showId];
+    saveUserEpisodes(req.userId, data);
+    res.json({ success: true, message: 'Tracking removed' });
+  } catch (err) {
+    console.error('Delete episode tracking - Error:', err);
+    res.status(500).json({ error: 'Failed to remove tracking' });
+  }
+});
+
+// Fetch episodes for a specific season from OMDB or TMDb
+app.get('/api/episodes/:showId/season/:season', authMiddleware, async (req, res) => {
+  const { showId, season } = req.params;
+  console.log('=== GET SEASON EPISODES ===', showId, season);
+
+  // TMDb-sourced show
+  if (showId.startsWith('tmdb-')) {
+    const tmdbId = showId.slice(5);
+    if (!TMDB_API_KEY) {
+      return res.json({ Response: 'False', Error: 'TMDb key not configured' });
+    }
+    try {
+      const url = getTmdbUrl(`/tv/${tmdbId}/season/${season}`);
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!data.episodes) {
+        return res.json({ Response: 'False', Error: 'Season not found' });
+      }
+      const episodes = data.episodes.map(ep => ({
+        number: ep.episode_number,
+        title: ep.name || `Episode ${ep.episode_number}`,
+        released: ep.air_date || ''
+      }));
+      res.json({ Response: 'True', season: parseInt(season), totalEpisodes: episodes.length, episodes });
+    } catch (err) {
+      console.error('TMDb season fetch - Error:', err);
+      res.status(500).json({ error: 'Failed to fetch season from TMDb' });
+    }
+    return;
+  }
+
+  // OMDB-sourced show
+  try {
+    const response = await fetch(`${OMDB_URL}?i=${showId}&Season=${season}&apikey=${OMDB_API_KEY}`);
+    const data = await response.json();
+    if (data.Response === 'True') {
+      const episodes = (data.Episodes || []).map(ep => ({
+        number: parseInt(ep.Episode),
+        title: ep.Title,
+        released: ep.Released
+      }));
+      res.json({
+        Response: 'True',
+        season: parseInt(season),
+        totalEpisodes: data.totalSeasons ? parseInt(data.totalSeasons) : episodes.length,
+        episodes
+      });
+    } else {
+      res.json({ Response: 'False', Error: data.Error || 'Season not found' });
+    }
+  } catch (err) {
+    console.error('OMDB season fetch - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch season' });
+  }
+});
+
+// Admin - Add movie
+app.post('/api/admin/movies', adminMiddleware, async (req, res) => {
+  console.log('=== ADD MOVIE ===');
+  console.log('Body:', req.body);
+
+  try {
+    const { imdbID, Title, Year, Poster, Plot, Director, Actors, Genre, imdbRating } = req.body;
+
+    if (!imdbID || !Title) {
+      return res.status(400).json({ error: 'IMDB ID and Title are required' });
+    }
+
+    if (USE_DATABASE) {
+      const result = await pool.query(
+        'INSERT INTO movies (imdb_id, title, year, poster, plot, director, actors, genre, imdb_rating) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (imdb_id) DO UPDATE SET title = $2, year = $3, poster = $4, plot = $5, director = $6, actors = $7, genre = $8, imdb_rating = $9 RETURNING *',
+        [imdbID, Title, Year || '', Poster || '', Plot || '', Director || '', Actors || '', Genre || '', imdbRating || '']
+      );
+      console.log('Movie added/updated:', result.rows[0].title);
+      res.status(201).json(result.rows[0]);
+    } else {
+      const movies = readJsonFile(MOVIES_FILE) || [];
+      const existingIndex = movies.findIndex(m => m.imdbID === imdbID);
+
+      const movieData = {
+        imdbID,
+        Title,
+        Year: Year || '',
+        Poster: Poster || '',
+        Plot: Plot || '',
+        Director: Director || '',
+        Actors: Actors || '',
+        Genre: Genre || '',
+        imdbRating: imdbRating || ''
+      };
+
+      if (existingIndex >= 0) {
+        movies[existingIndex] = movieData;
+      } else {
+        movies.push(movieData);
+      }
+
+      writeJsonFile(MOVIES_FILE, movies);
+      console.log('Movie added/updated:', Title);
+      res.status(201).json(movieData);
+    }
+  } catch (err) {
+    console.error('Add movie - Error:', err);
+    res.status(500).json({ error: 'Failed to add movie' });
+  }
+});
+
+// Admin - Delete movie
+app.delete('/api/admin/movies/:id', adminMiddleware, async (req, res) => {
+  console.log('=== DELETE MOVIE ===', req.params.id);
+
+  try {
+    if (USE_DATABASE) {
+      const result = await pool.query('DELETE FROM movies WHERE imdb_id = $1 RETURNING *', [req.params.id]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Movie not found' });
+      }
+      console.log('Movie deleted:', result.rows[0].title);
+      res.json({ message: 'Movie deleted', movie: result.rows[0] });
+    } else {
+      const movies = readJsonFile(MOVIES_FILE) || [];
+      const movieIndex = movies.findIndex(m => m.imdbID === req.params.id);
+
+      if (movieIndex === -1) {
+        return res.status(404).json({ error: 'Movie not found' });
+      }
+
+      const deleted = movies.splice(movieIndex, 1);
+      writeJsonFile(MOVIES_FILE, movies);
+      console.log('Movie deleted:', deleted[0].Title);
+      res.json({ message: 'Movie deleted', movie: deleted[0] });
+    }
+  } catch (err) {
+    console.error('Delete movie - Error:', err);
+    res.status(500).json({ error: 'Failed to delete movie' });
+  }
+});
+
+// ============ START SERVER ============
+
+async function startServer() {
+  console.log('=== STARTING SERVER INITIALIZATION ===');
+
+  try {
+    console.log('Initializing database...');
+    await initializeDatabase();
+    console.log('Database initialized successfully');
+
+    if (USE_DATABASE) {
+      // Load initial movies data if needed
+      console.log('Checking if movies need to be loaded...');
+      const moviesCount = await pool.query('SELECT COUNT(*) FROM movies');
+      console.log('Movies in database:', moviesCount.rows[0].count);
+
+      if (parseInt(moviesCount.rows[0].count) === 0) {
+        const moviesFile = path.join(__dirname, 'movies.json');
+        if (fs.existsSync(moviesFile)) {
+          console.log('Loading movies from file...');
+          const movies = JSON.parse(fs.readFileSync(moviesFile, 'utf8'));
+          console.log('Movies to load:', movies.length);
+          for (const movie of movies) {
+            await pool.query(
+              'INSERT INTO movies (imdb_id, title, year, poster, plot, director, actors, genre, imdb_rating) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (imdb_id) DO NOTHING',
+              [movie.imdbID, movie.Title, movie.Year, movie.Poster, movie.Plot, movie.Director, movie.Actors, movie.Genre, movie.imdbRating]
+            );
+          }
+          console.log('Movies loaded from file');
+        }
+      }
+    }
+  } catch (err) {
+    console.error('=== DATABASE INITIALIZATION FAILED ===');
+    console.error('Error:', err.message);
+    console.error('Stack:', err.stack);
+  }
+
+  // Serve static frontend if dist folder exists (production build)
+  const distPath = path.join(__dirname, '../dist');
+  console.log('Checking for dist folder:', distPath);
+  console.log('Dist exists:', fs.existsSync(distPath));
+
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('/*path', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+    console.log('Static files being served from dist');
+  }
+
+  app.listen(PORT, () => {
+    console.log('=== SERVER STARTED ===');
+    console.log(`Server running on port ${PORT}`);
+    console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Mode: ${USE_DATABASE ? 'PostgreSQL' : 'JSON Files'}`);
+    console.log(`DATABASE_URL: ${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`);
+  });
+}
+
+startServer();

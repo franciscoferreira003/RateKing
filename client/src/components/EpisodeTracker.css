@@ -1,0 +1,151 @@
+.episode-tracker {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 1rem;
+}
+
+.episode-tracker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.episode-seasons-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.episode-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.episode-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.episode-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #facc15, #fbbf24);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.episode-progress-text {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.episode-next-up {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.episode-season-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.episode-season-tab {
+  padding: 0.25rem 0.6rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.episode-season-tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.episode-season-tab.active {
+  background: rgba(250, 204, 21, 0.2);
+  color: #facc15;
+  border-color: rgba(250, 204, 21, 0.5);
+}
+
+.episode-season-count {
+  font-size: 0.65rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.05rem 0.35rem;
+  border-radius: 9999px;
+}
+
+.episode-season-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.episode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.episode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.episode-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.episode-row input[type="checkbox"] {
+  accent-color: #facc15;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.episode-number {
+  color: #facc15;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 2.5rem;
+}
+
+.episode-title {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .episode-list {
+    max-height: 240px;
+  }
+}

@@ -1,0 +1,84 @@
+.list-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.list-actions-dropdown {
+  position: relative;
+}
+
+.list-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  min-width: 260px;
+  max-width: 320px;
+  background: #141414;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  z-index: 60;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.list-panel-empty {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.8rem;
+  padding: 0.5rem 0;
+  text-align: center;
+}
+
+.list-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.list-panel-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.list-panel-item input[type="checkbox"] {
+  accent-color: #facc15;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.list-panel-item span:nth-of-type(1) {
+  color: #fff;
+  font-size: 0.875rem;
+  flex: 1;
+}
+
+.list-panel-count {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.list-panel-create {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.list-panel-create .input {
+  flex: 1;
+  min-width: 0;
+}

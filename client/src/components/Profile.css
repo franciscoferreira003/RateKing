@@ -1,0 +1,4 @@
+/* Profile page uses inline Tailwind classes for avatar sizing.
+   Do not redefine .profile-avatar here — it conflicts with the
+   header's .profile-avatar (defined in index.css) and makes the
+   header button render at 128px instead of 24px. */
