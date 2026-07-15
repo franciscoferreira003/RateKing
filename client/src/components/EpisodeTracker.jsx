@@ -262,12 +262,14 @@ function EpisodeTracker({ showId, title, year, poster, totalSeasons }) {
           const sn = seasons[String(s)];
           const w = sn ? (sn.watched || []).length : 0;
           const t = sn ? sn.total : 0;
+          const completed = t > 0 && w === t;
           return (
             <button
               key={s}
               onClick={() => setActiveSeason(s)}
-              className={`episode-season-tab ${activeSeason === s ? 'active' : ''}`}
+              className={`episode-season-tab ${activeSeason === s ? 'active' : ''} ${completed ? 'completed' : ''}`}
             >
+              {completed && <span className="episode-season-check">✓</span>}
               S{s}{t > 0 && <span className="episode-season-count">{w}/{t}</span>}
             </button>
           );

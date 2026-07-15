@@ -184,7 +184,8 @@ function VideoGames() {
               <img
                 src={selectedGame.poster || 'https://via.placeholder.com/280x420?text=No+Image'}
                 alt={selectedGame.title}
-                className="w-56 md:w-72 h-auto rounded-2xl shadow-2xl mx-auto md:mx-0 object-cover"
+                className="modal-poster"
+                onError={(e) => { e.target.src = 'https://via.placeholder.com/280x420?text=No+Image'; }}
               />
 
               <div className="flex-1">

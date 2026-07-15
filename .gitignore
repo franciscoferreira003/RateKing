@@ -30,6 +30,8 @@ server/movies.json
 server/watchlists.json
 server/lists.json
 server/episodes.json
+server/messages.json
+server/message_dismissals.json
 server/backups/
 # Ignore uploaded files but keep folder
 server/uploads/*

@@ -388,6 +388,27 @@ body {
   border-radius: 1.25rem;
 }
 
+/* Shared poster image styling for detail modals — preserves aspect ratio */
+.modal-poster {
+  max-width: 260px;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 1rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  margin: 0 auto;
+  display: block;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .modal-poster {
+    max-width: 200px;
+    max-height: 300px;
+  }
+}
+
 /* Modal overlay (solid dark, no blur) */
 .modal-overlay-solid {
   background: rgba(0, 0, 0, 0.85);

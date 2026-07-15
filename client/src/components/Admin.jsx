@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import API_BASE_URL from '../config';
@@ -9,6 +9,7 @@ function Admin() {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [messages, setMessages] = useState([]);
   const [usernames, setUsernames] = useState({});
   const [activeTab, setActiveTab] = useState('users');
   const [loading, setLoading] = useState(true);
@@ -18,6 +19,10 @@ function Admin() {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', confirmPassword: '', isAdmin: false });
   const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' });
+  const [newMessage, setNewMessage] = useState({ title: '', body: '', targetType: 'all', targetUserId: '' });
+  const [messageImage, setMessageImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const messageImageInputRef = useRef(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -83,6 +88,14 @@ function Admin() {
       if (reviewsRes.ok) {
         setReviews(reviewsData);
         fetchUsernames(reviewsData);
+      }
+
+      const msgRes = await fetch(`${API_BASE_URL}/api/admin/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const msgData = await msgRes.json();
+      if (msgRes.ok) {
+        setMessages(msgData.messages || []);
       }
     } catch (err) {
       setError('Failed to load admin data');
@@ -197,6 +210,78 @@ function Admin() {
     }
   };
 
+  const createMessage = async () => {
+    if (!newMessage.body.trim()) {
+      alert('Message body is required');
+      return;
+    }
+    if (newMessage.targetType === 'user' && !newMessage.targetUserId) {
+      alert('Select a target user');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    // Multipart form data so we can attach an optional image
+    const formData = new FormData();
+    formData.append('title', newMessage.title);
+    formData.append('body', newMessage.body);
+    formData.append('targetType', newMessage.targetType);
+    if (newMessage.targetType === 'user') {
+      formData.append('targetUserId', newMessage.targetUserId);
+    }
+    if (messageImage) {
+      formData.append('image', messageImage);
+    }
+    const res = await fetch(`${API_BASE_URL}/api/admin/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setMessages(prev => [...prev, { ...data, dismissals: 0 }]);
+      setNewMessage({ title: '', body: '', targetType: 'all', targetUserId: '' });
+      setMessageImage(null);
+      setImagePreview(null);
+      if (messageImageInputRef.current) messageImageInputRef.current.value = '';
+      alert('Message created — it will be shown to the recipient on next login.');
+    } else {
+      alert(data.error || 'Failed to create message');
+    }
+  };
+
+  const onPickMessageImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be under 2MB');
+      e.target.value = '';
+      return;
+    }
+    setMessageImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearMessageImage = () => {
+    setMessageImage(null);
+    setImagePreview(null);
+    if (messageImageInputRef.current) messageImageInputRef.current.value = '';
+  };
+
+  const deleteMessage = async (msgId) => {
+    if (!confirm('Delete this message? Dismissal records will also be removed.')) return;
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_BASE_URL}/api/admin/messages/${msgId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to delete message');
+    }
+  };
+
   const categoryIcons = {
     movies: '🎬',
     songs: '🎵',
@@ -239,6 +324,12 @@ function Admin() {
           onClick={() => setActiveTab('reviews')}
         >
           Reviews ({reviews.length})
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'messages' ? 'active' : ''}`}
+          onClick={() => setActiveTab('messages')}
+        >
+          Messages ({messages.length})
         </button>
       </div>
 
@@ -427,6 +518,138 @@ function Admin() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'messages' && (
+        <div className="admin-messages-panel">
+          {/* Create new message */}
+          <div className="admin-message-form">
+            <h3>Send a Login Message</h3>
+            <p className="admin-message-form-hint">
+              Messages appear as a popup when the recipient logs in. Once they close it, it won't reappear.
+            </p>
+            <div className="form-group">
+              <label>Title (optional)</label>
+              <input
+                type="text"
+                value={newMessage.title}
+                onChange={(e) => setNewMessage({ ...newMessage, title: e.target.value })}
+                placeholder="e.g. Welcome, Maintenance notice, etc."
+                maxLength={100}
+              />
+            </div>
+            <div className="form-group">
+              <label>Message</label>
+              <textarea
+                value={newMessage.body}
+                onChange={(e) => setNewMessage({ ...newMessage, body: e.target.value })}
+                placeholder="Write your message..."
+                rows={4}
+                maxLength={1000}
+              />
+            </div>
+            <div className="form-group">
+              <label>Recipient</label>
+              <div className="recipient-toggle">
+                <label className={newMessage.targetType === 'all' ? 'active' : ''}>
+                  <input
+                    type="radio"
+                    name="targetType"
+                    value="all"
+                    checked={newMessage.targetType === 'all'}
+                    onChange={() => setNewMessage({ ...newMessage, targetType: 'all', targetUserId: '' })}
+                  />
+                  All users
+                </label>
+                <label className={newMessage.targetType === 'user' ? 'active' : ''}>
+                  <input
+                    type="radio"
+                    name="targetType"
+                    value="user"
+                    checked={newMessage.targetType === 'user'}
+                    onChange={() => setNewMessage({ ...newMessage, targetType: 'user' })}
+                  />
+                  Specific user
+                </label>
+              </div>
+            </div>
+            {newMessage.targetType === 'user' && (
+              <div className="form-group">
+                <label>Select user</label>
+                <select
+                  value={newMessage.targetUserId}
+                  onChange={(e) => setNewMessage({ ...newMessage, targetUserId: e.target.value })}
+                >
+                  <option value="">— Choose a user —</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="form-group">
+              <label>Image (optional, max 2MB)</label>
+              <div className="message-image-picker">
+                <input
+                  ref={messageImageInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={onPickMessageImage}
+                  className="message-image-input"
+                />
+                {imagePreview && (
+                  <div className="message-image-preview">
+                    <img src={imagePreview} alt="Preview" />
+                    <button
+                      type="button"
+                      className="message-image-clear"
+                      onClick={clearMessageImage}
+                    >
+                      ✕ Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="actions">
+              <button className="btn btn-primary" onClick={createMessage}>Send Message</button>
+            </div>
+          </div>
+
+          {/* Existing messages */}
+          <div className="admin-existing-messages">
+            <h3>Existing Messages</h3>
+            {messages.length === 0 ? (
+              <p className="admin-empty">No messages yet.</p>
+            ) : (
+              <div className="admin-message-list">
+                {messages.map(m => (
+                  <div key={m.id} className="admin-message-card">
+                    <div className="admin-message-card-head">
+                      <span className={`badge ${m.targetType === 'all' ? 'user' : 'admin'}`}>
+                        {m.targetType === 'all' ? '📢 All users' : '👤 ' + (users.find(u => u.id === m.targetUserId)?.username || 'user')}
+                      </span>
+                      <span className="admin-message-date">
+                        {new Date(m.createdAt).toLocaleString()}
+                      </span>
+                      <button className="btn btn-danger" onClick={() => deleteMessage(m.id)}>
+                        Delete
+                      </button>
+                    </div>
+                    {m.title && <h4>{m.title}</h4>}
+                    {m.image && (
+                      <img src={m.image} alt="" className="admin-message-thumb" />
+                    )}
+                    <p>{m.body}</p>
+                    <span className="admin-message-dismissals">
+                      Dismissed by {m.dismissals || 0} user(s)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

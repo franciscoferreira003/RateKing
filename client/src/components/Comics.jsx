@@ -172,7 +172,7 @@ function Comics() {
               <img
                 src={comicDetails?.poster || selectedComic.poster || 'https://via.placeholder.com/280x420?text=No+Cover'}
                 alt={selectedComic.title}
-                className="w-44 md:w-52 h-auto rounded-2xl shadow-2xl mx-auto md:mx-0 object-cover"
+                className="modal-poster"
                 onError={(e) => { e.target.src = 'https://via.placeholder.com/280x420?text=No+Cover'; }}
               />
 

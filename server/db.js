@@ -25,6 +25,8 @@ const MOVIES_FILE = path.join(DATA_DIR, 'movies.json');
 const WATCHLISTS_FILE = path.join(DATA_DIR, 'watchlists.json');
 const LISTS_FILE = path.join(DATA_DIR, 'lists.json');
 const EPISODES_FILE = path.join(DATA_DIR, 'episodes.json');
+const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
+const MESSAGE_DISMISSALS_FILE = path.join(DATA_DIR, 'message_dismissals.json');
 
 // Initialize JSON files if they don't exist
 function initJsonFiles() {
@@ -76,6 +78,16 @@ function initJsonFiles() {
   if (!fs.existsSync(EPISODES_FILE)) {
     fs.writeFileSync(EPISODES_FILE, JSON.stringify({}, null, 2));
     console.log('Created episodes.json');
+  }
+
+  if (!fs.existsSync(MESSAGES_FILE)) {
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify([], null, 2));
+    console.log('Created messages.json');
+  }
+
+  if (!fs.existsSync(MESSAGE_DISMISSALS_FILE)) {
+    fs.writeFileSync(MESSAGE_DISMISSALS_FILE, JSON.stringify({}, null, 2));
+    console.log('Created message_dismissals.json');
   }
 }
 
@@ -173,5 +185,7 @@ module.exports = {
   MOVIES_FILE,
   WATCHLISTS_FILE,
   LISTS_FILE,
-  EPISODES_FILE
+  EPISODES_FILE,
+  MESSAGES_FILE,
+  MESSAGE_DISMISSALS_FILE
 };

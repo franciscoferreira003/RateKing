@@ -1,0 +1,113 @@
+.user-message-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+  animation: um-fade-in 0.25s ease;
+}
+
+@keyframes um-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.user-message-card {
+  position: relative;
+  background: #0a0a0a;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 1.25rem;
+  max-width: 440px;
+  width: 100%;
+  padding: 2rem 1.75rem 1.5rem;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+  animation: um-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes um-pop-in {
+  from { transform: scale(0.92); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.user-message-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.user-message-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.user-message-icon {
+  font-size: 2.5rem;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.user-message-title {
+  color: #facc15;
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.user-message-body {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 1.25rem;
+}
+
+.user-message-image {
+  max-width: 100%;
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 0 auto 1.25rem;
+  display: block;
+}
+
+.user-message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.user-message-hint {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .user-message-card {
+    padding: 1.75rem 1.25rem 1.25rem;
+  }
+  .user-message-icon {
+    font-size: 2rem;
+  }
+}

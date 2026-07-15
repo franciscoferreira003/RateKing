@@ -231,7 +231,8 @@ function Media() {
               <img
                 src={selectedItem.Poster !== 'N/A' ? selectedItem.Poster : 'https://via.placeholder.com/280x420?text=No+Poster'}
                 alt={selectedItem.Title}
-                className="w-56 md:w-72 h-auto rounded-2xl shadow-2xl mx-auto md:mx-0"
+                className="modal-poster"
+                onError={(e) => { e.target.src = 'https://via.placeholder.com/280x420?text=No+Poster'; }}
               />
 
               <div className="flex-1">

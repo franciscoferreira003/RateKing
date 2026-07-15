@@ -7,7 +7,7 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const { pool, initializeDatabase, generateId, USE_DATABASE, USERS_FILE, REVIEWS_FILE, MOVIES_FILE, WATCHLISTS_FILE, LISTS_FILE, EPISODES_FILE } = require('./db');
+const { pool, initializeDatabase, generateId, USE_DATABASE, USERS_FILE, REVIEWS_FILE, MOVIES_FILE, WATCHLISTS_FILE, LISTS_FILE, EPISODES_FILE, MESSAGES_FILE, MESSAGE_DISMISSALS_FILE } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -2203,6 +2203,151 @@ app.get('/api/episodes/:showId/season/:season', authMiddleware, async (req, res)
   } catch (err) {
     console.error('OMDB season fetch - Error:', err);
     res.status(500).json({ error: 'Failed to fetch season' });
+  }
+});
+
+// ============ LOGIN MESSAGES ============
+
+function getAllMessages() {
+  return readJsonFile(MESSAGES_FILE) || [];
+}
+
+function saveAllMessages(messages) {
+  writeJsonFile(MESSAGES_FILE, messages);
+}
+
+function getDismissals(userId) {
+  const all = readJsonFile(MESSAGE_DISMISSALS_FILE) || {};
+  return new Set(all[userId] || []);
+}
+
+function addDismissal(userId, messageId) {
+  const all = readJsonFile(MESSAGE_DISMISSALS_FILE) || {};
+  if (!all[userId]) all[userId] = [];
+  if (!all[userId].includes(messageId)) {
+    all[userId].push(messageId);
+    writeJsonFile(MESSAGE_DISMISSALS_FILE, all);
+  }
+}
+
+// Admin: list all messages
+app.get('/api/admin/messages', adminMiddleware, (req, res) => {
+  try {
+    const messages = getAllMessages();
+    const dismissals = readJsonFile(MESSAGE_DISMISSALS_FILE) || {};
+    // Attach dismissal count per message
+    const enriched = messages.map(m => ({
+      ...m,
+      dismissals: Object.values(dismissals).filter(arr => arr.includes(m.id)).length
+    }));
+    res.json({ messages: enriched });
+  } catch (err) {
+    console.error('Get admin messages - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// Admin: create a message
+app.post('/api/admin/messages', adminMiddleware, upload.single('image'), (req, res) => {
+  const { title, body, targetType, targetUserId } = req.body;
+  if (!body || !body.trim()) {
+    return res.status(400).json({ error: 'Message body is required' });
+  }
+  if (targetType && !['all', 'user'].includes(targetType)) {
+    return res.status(400).json({ error: 'Invalid targetType' });
+  }
+  if (targetType === 'user' && !targetUserId) {
+    return res.status(400).json({ error: 'targetUserId is required when targetType is "user"' });
+  }
+  try {
+    // Optional image upload — stored as base64 data URL (same pattern as avatars)
+    let image = null;
+    if (req.file) {
+      const mimeType = req.file.mimetype;
+      const base64 = req.file.buffer.toString('base64');
+      image = `data:${mimeType};base64,${base64}`;
+    }
+
+    const messages = getAllMessages();
+    const newMessage = {
+      id: generateId(),
+      title: (title || '').trim(),
+      body: body.trim(),
+      image,
+      targetType: targetType || 'all',
+      targetUserId: targetType === 'user' ? targetUserId : null,
+      createdBy: req.userId,
+      createdAt: new Date().toISOString()
+    };
+    messages.push(newMessage);
+    saveAllMessages(messages);
+    console.log('Message created:', newMessage.id, image ? '(with image)' : '(no image)');
+    res.status(201).json(newMessage);
+  } catch (err) {
+    console.error('Create message - Error:', err);
+    res.status(500).json({ error: 'Failed to create message' });
+  }
+});
+
+// Admin: delete a message (also removes all dismissals for it)
+app.delete('/api/admin/messages/:id', adminMiddleware, (req, res) => {
+  try {
+    const messages = getAllMessages();
+    const idx = messages.findIndex(m => m.id === req.params.id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    const [deleted] = messages.splice(idx, 1);
+    saveAllMessages(messages);
+
+    // Remove dismissals referencing this message
+    const dismissals = readJsonFile(MESSAGE_DISMISSALS_FILE) || {};
+    for (const uid of Object.keys(dismissals)) {
+      dismissals[uid] = dismissals[uid].filter(id => id !== req.params.id);
+    }
+    writeJsonFile(MESSAGE_DISMISSALS_FILE, dismissals);
+
+    res.json({ success: true, message: 'Message deleted', deleted });
+  } catch (err) {
+    console.error('Delete message - Error:', err);
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// User: get undismised messages for current user (shown on login)
+app.get('/api/messages', authMiddleware, (req, res) => {
+  try {
+    const messages = getAllMessages();
+    const dismissed = getDismissals(req.userId);
+    const visible = messages.filter(m => {
+      if (dismissed.has(m.id)) return false;
+      if (m.targetType === 'user' && m.targetUserId !== req.userId) return false;
+      return true;
+    });
+    res.json({ messages: visible });
+  } catch (err) {
+    console.error('Get messages - Error:', err);
+    res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// User: dismiss a message so it doesn't reappear
+app.post('/api/messages/:id/dismiss', authMiddleware, (req, res) => {
+  try {
+    const messages = getAllMessages();
+    const msg = messages.find(m => m.id === req.params.id);
+    if (!msg) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    // Only allow dismissing messages visible to this user
+    if (msg.targetType === 'user' && msg.targetUserId !== req.userId) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    addDismissal(req.userId, req.params.id);
+    res.json({ success: true, message: 'Message dismissed' });
+  } catch (err) {
+    console.error('Dismiss message - Error:', err);
+    res.status(500).json({ error: 'Failed to dismiss message' });
   }
 });
 

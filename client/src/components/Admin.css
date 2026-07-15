@@ -186,6 +186,30 @@
   border-color: #fbbf24;
 }
 
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  color: #fff;
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #fbbf24;
+}
+
+.form-group select option {
+  background: #1a1a2e;
+  color: #fff;
+}
+
 .form-group input[type="checkbox"] {
   margin-right: 0.5rem;
 }
@@ -224,4 +248,190 @@
   justify-content: center;
   min-height: 50vh;
   color: #fbbf24;
+}
+
+/* Messages panel */
+.admin-messages-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.admin-message-form {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  padding: 1.5rem;
+}
+
+.admin-message-form h3 {
+  color: #fff;
+  font-size: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-message-form-hint {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.recipient-toggle {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.recipient-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.recipient-toggle label.active {
+  border-color: #fbbf24;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.recipient-toggle input[type="radio"] {
+  accent-color: #fbbf24;
+}
+
+.admin-existing-messages h3 {
+  color: #fff;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.admin-empty {
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  padding: 2rem;
+}
+
+.admin-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-message-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.admin-message-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-message-date {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  margin-right: auto;
+}
+
+.admin-message-card h4 {
+  color: #fbbf24;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-message-card p {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 0.5rem;
+}
+
+.admin-message-dismissals {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.75rem;
+}
+
+/* Message image picker */
+.message-image-picker {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.message-image-input {
+  flex: 1;
+  min-width: 200px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message-image-input::file-selector-button {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  color: #facc15;
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin-right: 0.75rem;
+  transition: all 0.2s;
+}
+
+.message-image-input::file-selector-button:hover {
+  background: rgba(250, 204, 21, 0.25);
+}
+
+.message-image-preview {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.message-image-preview img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-image-clear {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  background: rgba(239, 68, 68, 0.9);
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.message-image-clear:hover {
+  background: rgba(239, 68, 68, 1);
+}
+
+.admin-message-thumb {
+  max-width: 100%;
+  max-height: 220px;
+  width: auto;
+  border-radius: 0.5rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }

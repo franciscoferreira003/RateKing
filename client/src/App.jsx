@@ -15,6 +15,7 @@ import Comics from './components/Comics';
 import Watchlist from './components/Watchlist';
 import MovieForm from './components/MovieForm';
 import Profile from './components/Profile';
+import UserMessages from './components/UserMessages';
 import API_BASE_URL from './config';
 import './App.css';
 
@@ -185,6 +186,7 @@ function AppContent() {
           </Routes>
         </main>
       </div>
+      <UserMessages />
     </>
   );
 }
