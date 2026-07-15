@@ -2,3 +2,34 @@
    Do not redefine .profile-avatar here — it conflicts with the
    header's .profile-avatar (defined in index.css) and makes the
    header button render at 128px instead of 24px. */
+
+@media (max-width: 640px) {
+  /* Smaller profile header glass padding */
+  .profile-page-wrapper,
+  .max-w-4xl > .glass {
+    padding: 1.25rem !important;
+    border-radius: 1.5rem !important;
+  }
+  /* Shrink the 128px avatar on phones */
+  .max-w-4xl .glass img[class*="rounded-full"],
+  .max-w-4xl .glass div[class*="rounded-full"] {
+    width: 96px !important;
+    height: 96px !important;
+  }
+  /* Review card: stack the right-side meta under the body on phones */
+  .max-w-4xl .glass.p-6 .flex.items-start.justify-between {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .max-w-4xl .glass.p-6 .text-right.shrink-0 {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  /* Title can wrap on small screens instead of overflowing */
+  .max-w-4xl .glass.p-6 h3 {
+    font-size: 1rem;
+    word-break: break-word;
+  }
+}

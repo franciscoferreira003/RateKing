@@ -395,7 +395,7 @@ function ReviewForm() {
               <span className="text-xl">👑</span>
               <span className="text-sm font-medium text-yellow-400">King Meter</span>
             </label>
-            <div className="flex items-center gap-2">
+            <div className="crown-meter-row flex items-center gap-2">
               {renderCrowns(hoverRating || formData.rating)}
               <span className="text-yellow-400 font-semibold ml-3">
                 {hoverRating || formData.rating}/5 Crowns

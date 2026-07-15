@@ -60,94 +60,163 @@ function Header() {
     </>
   );
 
-  return (
-    <header className="fixed top-0 left-0 right-0 bg-black border-b border-yellow-500/20 z-50">
-      <div className="max-w-7xl mx-auto px-4 py-1.5 flex items-center justify-between gap-2">
-        {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 group shrink-0">
-          <span className="text-2xl group-hover:scale-110 transition-transform duration-300">👑</span>
-          <span className="text-lg font-bold text-gold-gradient">RateKing</span>
-        </Link>
-
-        {/* Desktop Navigation */}
-        <nav className="hidden sm:flex items-center gap-1">
-          {navLinks}
-        </nav>
-
-        {/* Right side */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="hidden md:inline px-2 py-1 rounded-full text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-            {getTotalReviews()} reviews
-          </span>
-
-          {user && (
-            <Link to="/category/movies/new" className="btn btn-primary text-xs py-1.5 px-3">
-              ✍️ New
-            </Link>
-          )}
-
-          {user && user.isAdmin && (
-            <>
-              <Link to="/users" className="btn btn-secondary text-xs py-1.5 px-3" title="Users">
-                👥
-              </Link>
-              <Link to="/admin" className="btn btn-secondary text-xs py-1.5 px-3" title="Admin">
-                🛡️
-              </Link>
-            </>
-          )}
-
-          {user ? (
-            <>
-              <Link
-                to={user.id ? `/profile/${user.id}` : '#'}
-                className="profile-btn"
-                title="Go to profile"
-              >
-                {user.profilePicture ? (
-                  <img
-                    src={user.profilePicture}
-                    alt={user.username}
-                    className="profile-avatar"
-                  />
-                ) : (
-                  <div className="profile-avatar flex items-center justify-center">
-                    <svg style={{ width: '16px', height: '16px' }} fill="currentColor" viewBox="0 0 24 24" color="rgba(255,255,255,0.6)">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-                    </svg>
-                  </div>
-                )}
-                <span className="hidden lg:inline truncate max-w-[90px]">{user.username}</span>
-              </Link>
-              <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3">
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="btn btn-secondary text-xs py-1.5 px-3">Login</Link>
-              <Link to="/register" className="btn btn-primary text-xs py-1.5 px-3">Register</Link>
-            </>
-          )}
-
-          {/* Mobile menu toggle */}
-          <button
-            onClick={() => setMobileOpen(v => !v)}
-            className="btn btn-secondary text-xs py-1.5 px-3 sm:hidden"
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? '✕' : '☰'}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Navigation */}
-      {mobileOpen && (
-        <nav className="sm:hidden flex flex-col gap-1 px-4 pb-3 pt-1 border-t border-yellow-500/10 bg-black">
-          {navLinks}
-        </nav>
+  const accountLinks = user ? (
+    <>
+      <Link to="/category/movies/new" className="nav-link">✍️ New Review</Link>
+      {user.isAdmin && (
+        <>
+          <Link to="/users" className="nav-link">👥 Users</Link>
+          <Link to="/admin" className="nav-link">🛡️ Admin</Link>
+        </>
       )}
-    </header>
+      <button onClick={logout} className="nav-link text-left">⎋ Logout</button>
+    </>
+  ) : null;
+
+  return (
+    <>
+      {/* Desktop header (hidden on mobile — mobile uses the sidebar) */}
+      <header className="fixed top-0 left-0 right-0 bg-black border-b border-yellow-500/20 z-50 hidden sm:block">
+        <div className="max-w-7xl mx-auto px-3 py-1.5 flex items-center justify-between gap-2">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 group shrink-0">
+            <span className="text-2xl group-hover:scale-110 transition-transform duration-300">👑</span>
+            <span className="text-lg font-bold text-gold-gradient">RateKing</span>
+          </Link>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden sm:flex items-center gap-1">
+            {navLinks}
+          </nav>
+
+          {/* Right side */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="hidden md:inline px-2 py-1 rounded-full text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+              {getTotalReviews()} reviews
+            </span>
+
+            {user && user.isAdmin && (
+              <>
+                <Link to="/users" className="btn btn-secondary text-xs py-1.5 px-3 hidden md:inline-flex" title="Users">
+                  👥
+                </Link>
+                <Link to="/admin" className="btn btn-secondary text-xs py-1.5 px-3 hidden md:inline-flex" title="Admin">
+                  🛡️
+                </Link>
+              </>
+            )}
+
+            {user ? (
+              <>
+                <Link
+                  to={user.id ? `/profile/${user.id}` : '#'}
+                  className="profile-btn"
+                  title="Go to profile"
+                >
+                  {user.profilePicture ? (
+                    <img
+                      src={user.profilePicture}
+                      alt={user.username}
+                      className="profile-avatar"
+                    />
+                  ) : (
+                    <div className="profile-avatar flex items-center justify-center">
+                      <svg style={{ width: '16px', height: '16px' }} fill="currentColor" viewBox="0 0 24 24" color="rgba(255,255,255,0.6)">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    </div>
+                  )}
+                  <span className="hidden lg:inline truncate max-w-[90px]">{user.username}</span>
+                </Link>
+                <Link to="/category/movies/new" className="btn btn-primary text-xs py-1.5 px-3 hidden sm:inline-flex">
+                  ✍️ New
+                </Link>
+                <button onClick={logout} className="btn btn-secondary text-xs py-1.5 px-3 hidden md:inline-flex">
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn btn-secondary text-xs py-1.5 px-3 hidden sm:inline-flex">Login</Link>
+                <Link to="/register" className="btn btn-primary text-xs py-1.5 px-3 hidden sm:inline-flex">Register</Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile burger bar — only the icon, everything else lives in the sidebar */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="mobile-burger-btn sm:hidden"
+        aria-label="Open menu"
+      >
+        ☰
+      </button>
+
+      {/* Mobile sidebar + backdrop */}
+      {mobileOpen && (
+        <div className="mobile-sidebar-backdrop sm:hidden" onClick={() => setMobileOpen(false)}>
+          <aside className="mobile-sidebar" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-sidebar-head">
+              <Link to="/" className="flex items-center gap-2" onClick={() => setMobileOpen(false)}>
+                <span className="text-2xl">👑</span>
+                <span className="text-lg font-bold text-gold-gradient">RateKing</span>
+              </Link>
+              <button
+                className="mobile-sidebar-close"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close menu"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Reviews count + profile row */}
+            <div className="mobile-sidebar-profile">
+              <span className="mobile-sidebar-reviews">
+                {getTotalReviews()} reviews
+              </span>
+              {user ? (
+                <Link
+                  to={user.id ? `/profile/${user.id}` : '#'}
+                  className="mobile-sidebar-user"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt={user.username} className="profile-avatar" style={{ width: '2rem', height: '2rem' }} />
+                  ) : (
+                    <div className="profile-avatar flex items-center justify-center" style={{ width: '2rem', height: '2rem' }}>
+                      <svg style={{ width: '18px', height: '18px' }} fill="currentColor" viewBox="0 0 24 24" color="rgba(255,255,255,0.6)">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                    </div>
+                  )}
+                  <span className="mobile-sidebar-username">{user.username}</span>
+                </Link>
+              ) : (
+                <div className="mobile-sidebar-auth">
+                  <Link to="/login" className="btn btn-secondary" onClick={() => setMobileOpen(false)}>Login</Link>
+                  <Link to="/register" className="btn btn-primary" onClick={() => setMobileOpen(false)}>Register</Link>
+                </div>
+              )}
+            </div>
+
+            <nav className="mobile-sidebar-section">
+              <p className="mobile-sidebar-label">Browse</p>
+              {navLinks}
+            </nav>
+
+            {user && (
+              <nav className="mobile-sidebar-section">
+                <p className="mobile-sidebar-label">Account</p>
+                {accountLinks}
+              </nav>
+            )}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
 

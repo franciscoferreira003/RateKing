@@ -138,7 +138,7 @@ function Media() {
       </div>
 
       {/* Search Bar */}
-      <div className="flex gap-3 mb-8 max-w-2xl mx-auto">
+      <div className="flex flex-wrap gap-3 mb-8 max-w-2xl mx-auto">
         <input
           type="text"
           placeholder={`Search ${activeTab === 'movies' ? 'movies' : 'TV shows'}...`}

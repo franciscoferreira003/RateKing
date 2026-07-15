@@ -1,1 +1,20 @@
 /* ReviewForm page styles - using Tailwind classes in component */
+
+@media (max-width: 480px) {
+  /* Shrink the container paddings on small phones */
+  .max-w-2xl {
+    padding: 0 !important;
+  }
+  .glass {
+    padding: 1.25rem !important;
+    border-radius: 1.25rem !important;
+  }
+  /* Crown meter: wrap the "X/5 Crowns" label below the crowns */
+  .crown-meter-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .crown-meter-row > span {
+    font-size: 2rem;
+  }
+}

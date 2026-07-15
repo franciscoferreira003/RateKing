@@ -14,7 +14,10 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
 }
+
+/* Prevent iOS input zoom: inputs already use font-size: 1rem */
 
 /* Tailwind-like utilities that may not be generating */
 .fixed { position: fixed; }
@@ -442,6 +445,175 @@ body {
   background: rgba(250, 204, 21, 0.16);
 }
 
+/* Mobile sidebar — slides in from the left, opened by the burger icon */
+.mobile-burger-btn {
+  position: fixed;
+  top: 0.6rem;
+  left: 0.6rem;
+  z-index: 50;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.6rem;
+  background: #141414;
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  color: #facc15;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+
+.mobile-burger-btn:hover {
+  background: #1c1c1c;
+  border-color: rgba(250, 204, 21, 0.5);
+}
+
+.mobile-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+  animation: msb-fade-in 0.2s ease;
+}
+
+@keyframes msb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mobile-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 78%;
+  max-width: 300px;
+  background: #0a0a0a;
+  border-right: 1px solid rgba(250, 204, 21, 0.25);
+  box-shadow: 4px 0 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: msb-slide-in 0.25s cubic-bezier(0.34, 1.1, 0.64, 1);
+}
+
+@keyframes msb-slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.mobile-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mobile-sidebar-close {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.mobile-sidebar-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.mobile-sidebar-profile {
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.mobile-sidebar-reviews {
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  background: rgba(234, 179, 8, 0.1);
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.2);
+}
+
+.mobile-sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: #fff;
+  padding: 0.3rem 0;
+}
+
+.mobile-sidebar-user:hover .mobile-sidebar-username {
+  color: #facc15;
+}
+
+.mobile-sidebar-username {
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: color 0.15s;
+  word-break: break-word;
+}
+
+.mobile-sidebar-auth {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mobile-sidebar-auth .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.mobile-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem 0.75rem;
+}
+
+.mobile-sidebar-section + .mobile-sidebar-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mobile-sidebar-label {
+  color: rgba(250, 204, 21, 0.7);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Inside the sidebar, nav links become full-width stacked rows */
+.mobile-sidebar-section .nav-link {
+  display: flex;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.95rem;
+  border-radius: 0.6rem;
+}
+
 /* Profile button in header */
 .profile-btn {
   display: inline-flex;
@@ -804,6 +976,8 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .review-title {
@@ -868,4 +1042,108 @@ body {
 }
 .grid-cols-7 {
   grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+/* ============ MOBILE IMPROVEMENTS ============ */
+
+@media (max-width: 640px) {
+  /* Reduce page padding on mobile */
+  .admin-page,
+  .users-management-page {
+    padding: 1rem;
+  }
+
+  .search-page {
+    padding: 1rem;
+  }
+
+  /* Larger touch targets for buttons */
+  .btn {
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    min-height: 2.75rem;
+  }
+
+  /* Inputs — comfortable tap size */
+  .input {
+    padding: 0.85rem 1rem;
+    font-size: 1rem; /* prevents iOS zoom */
+  }
+
+  /* Bigger, easier-to-tap close button on modals */
+  .modal-solid + .close-btn,
+  .close-btn {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 1.4rem;
+  }
+
+  /* Tighter modal padding on mobile */
+  .modal-content {
+    padding: 1.5rem;
+  }
+
+  /* Admin/Users tables scroll horizontally instead of squishing */
+  .admin-table,
+  .users-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table table,
+  .users-table table {
+    min-width: 640px;
+  }
+
+  .admin-table th,
+  .admin-table td,
+  .users-table th,
+  .users-table td {
+    padding: 0.65rem 0.75rem;
+  }
+
+  /* Admin tabs scroll horizontally if many */
+  .admin-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    padding: 0.55rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  /* Modal poster smaller on phones (already set, but tighten) */
+  .modal-poster {
+    max-width: 160px;
+    max-height: 240px;
+  }
+
+  /* Review form crowns wrap nicely */
+  .crown-meter-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* Profile picture slightly smaller on mobile */
+  .profile-avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .btn {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  .modal-poster {
+    max-width: 140px;
+    max-height: 210px;
+  }
 }
